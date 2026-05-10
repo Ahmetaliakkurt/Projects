@@ -40,7 +40,6 @@ def build_ODE(v_exp):
     def rhs(t, c):
         L = L0 + v_exp * t
         dc = np.zeros(N_bas, dtype=complex)
-        # Anlık enerji seviyeleri (1-indexed: n=1,2,...,N_bas)
         E = np.array([(n+1)**2 * np.pi**2 * hbar**2 / (2*m*L**2)
                       for n in range(N_bas)])
         for i in range(N_bas):
@@ -142,8 +141,8 @@ ax_pop_fast.set_title("Probabilities of Existence at Energy Levels (Irreversible
 wall_slow = ax_wave_slow.axvline(L0, color=COLORS['wall'], lw=3)
 wall_fast = ax_wave_fast.axvline(L0, color=COLORS['fast_wave'], lw=2, linestyle='--')
 
-E_lines_slow = [ax_wave_slow.plot([], [], '--', color=COLORS['energy'], lw=0.8, alpha=0.5)[0] for _ in range(n_show)]
-E_lines_fast = [ax_wave_fast.plot([], [], '--', color=COLORS['energy'], lw=0.8, alpha=0.5)[0] for _ in range(n_show)]
+E_lines_slow = [ax_wave_slow.plot([], [], '--', color=COLORS['energy'], lw=0.8, alpha=1.0)[0] for _ in range(n_show)]
+E_lines_fast = [ax_wave_fast.plot([], [], '--', color=COLORS['energy'], lw=0.8, alpha=1.0)[0] for _ in range(n_show)]
 
 line_exp_slow, = ax_wave_slow.plot([], [], '-', color=COLORS['exp_slow'], lw=2, label='⟨E⟩')
 line_exp_fast, = ax_wave_fast.plot([], [], '-', color=COLORS['exp_fast'], lw=2, label='⟨E⟩')
