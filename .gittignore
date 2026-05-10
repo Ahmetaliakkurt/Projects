@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
+
+# C++ & Build
+build/
+bin/
+*.o
+*.obj
+*.exe
+*.out
+*.so
+
+# Model Ağırlıkları (Opsiyonel: Çok büyükse)
+# *.pth
+# *.h5
+
+# OS Files
+.DS_Store
