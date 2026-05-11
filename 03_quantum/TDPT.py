@@ -7,13 +7,11 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
-# ==========================================
 # 1. SİMÜLASYON PARAMETRELERİ
-# ==========================================
 L0    = 1.0    # Başlangıç kuyu genişliği
-L_end = 10    # Bitiş kuyu genişliği
+L_end = 10     # Bitiş kuyu genişliği
 v_fast = 4.0   # Hızlı (irreversible) genişleme hızı
-v_slow = 0.005  # Yavaş (adyabatik) genişleme hızı
+v_slow = 0.005 # Yavaş (adyabatik) genişleme hızı
 N_bas  = 12    # Süperpozisyon için durum sayısı
 hbar   = 1.0
 m      = 1.0
@@ -48,7 +46,6 @@ def build_ODE(v_exp):
             # Duvar hareketi coupling (dL/dt = v_exp > 0)
             for j in range(N_bas):
                 if j != i:
-                    # n,m 1-indexed → i+1, j+1
                     Mij = M_nm(i+1, j+1, L)
                     if Mij != 0.0:
                         dc[i] -= v_exp * Mij * c[j]
@@ -86,7 +83,7 @@ x_res = 600
 
 fig, axes = plt.subplots(2, 2, figsize=(16, 10))
 fig.patch.set_facecolor('#0d0f1a')
-fig.suptitle("Adiabariv Infinite Square Well - Reversible/Irreversible Processes",
+fig.suptitle("Adiabatic Infinite Square Well - Reversible/Irreversible Processes",
              color='white', fontsize=14, fontweight='bold', y=0.98)
 
 ax_wave_slow, ax_wave_fast = axes[0]
@@ -103,6 +100,7 @@ COLORS = {
     'wall':      '#eceff1',
     'bg':        '#0d0f1a',
     'grid':      '#1e2030',
+    'text':      '#ffffff'
 }
 
 n_show = 7
@@ -126,7 +124,8 @@ setup_ax(ax_wave_fast, f"Irreversible (v={v_fast})", COLORS['fast_wave'])
 for ax in (ax_pop_slow, ax_pop_fast):
     ax.set_facecolor(COLORS['bg'])
     ax.set_xlim(-0.5, n_show + 0.5)
-    ax.set_ylim(0, 1.05)
+    # Metinler sığsın diye y limitini 1.05'ten 1.15'e çıkardık
+    ax.set_ylim(0, 1.15) 
     ax.tick_params(colors='#607d8b')
     for sp in ax.spines.values():
         sp.set_color(COLORS['grid'])
@@ -134,15 +133,14 @@ for ax in (ax_pop_slow, ax_pop_fast):
     ax.set_xlabel("Enerji seviyesi n", color='#90a4ae', fontsize=10)
     ax.set_ylabel("$|c_n|²$", color='#90a4ae', fontsize=10)
 
-ax_pop_slow.set_title("Probabilities of Existence at Energy Levels (Reversibe)", color='white', fontsize=11)
+ax_pop_slow.set_title("Probabilities of Existence at Energy Levels (Reversible)", color='white', fontsize=11)
 ax_pop_fast.set_title("Probabilities of Existence at Energy Levels (Irreversible)", color='white', fontsize=11)
-
 
 wall_slow = ax_wave_slow.axvline(L0, color=COLORS['wall'], lw=3)
 wall_fast = ax_wave_fast.axvline(L0, color=COLORS['fast_wave'], lw=2, linestyle='--')
 
-E_lines_slow = [ax_wave_slow.plot([], [], '--', color=COLORS['energy'], lw=0.8, alpha=1.0)[0] for _ in range(n_show)]
-E_lines_fast = [ax_wave_fast.plot([], [], '--', color=COLORS['energy'], lw=0.8, alpha=1.0)[0] for _ in range(n_show)]
+E_lines_slow = [ax_wave_slow.plot([], [], '--', color=COLORS['energy'], lw=1.5, alpha=1.0)[0] for _ in range(n_show)]
+E_lines_fast = [ax_wave_fast.plot([], [], '--', color=COLORS['energy'], lw=1.5, alpha=1.0)[0] for _ in range(n_show)]
 
 line_exp_slow, = ax_wave_slow.plot([], [], '-', color=COLORS['exp_slow'], lw=2, label='⟨E⟩')
 line_exp_fast, = ax_wave_fast.plot([], [], '-', color=COLORS['exp_fast'], lw=2, label='⟨E⟩')
@@ -155,7 +153,10 @@ bar_slow = ax_pop_slow.bar(range(1, n_show+1), np.zeros(n_show),
 bar_fast = ax_pop_fast.bar(range(1, n_show+1), np.zeros(n_show),
                             color=COLORS['fast_wave'], alpha=0.85, width=0.5)
 
-# Norm uyarı metni (hata olursa görünür)
+# YENİ EKLENEN KISIM: Barların üzerine gelecek olan metin objeleri oluşturuluyor
+text_slow = [ax_pop_slow.text(i+1, 0, "", ha='center', va='bottom', color=COLORS['text'], fontsize=10, fontweight='bold') for i in range(n_show)]
+text_fast = [ax_pop_fast.text(i+1, 0, "", ha='center', va='bottom', color=COLORS['text'], fontsize=10, fontweight='bold') for i in range(n_show)]
+
 txt_norm_fast = ax_wave_fast.text(
     0.98, 0.96, "", transform=ax_wave_fast.transAxes,
     ha='right', va='top', color='#ef5350', fontsize=9
@@ -223,13 +224,19 @@ def animate(frame):
         color=COLORS['fast_wave'], alpha=0.55, linewidth=0
     )
 
-    # Popülasyon barları
+    # Popülasyon barları ve üzerlerindeki metinlerin anlık güncellenmesi
     pop_s_show = pop_s[:n_show]
     pop_f_show = pop_f[:n_show]
-    for bar, p in zip(bar_slow, pop_s_show):
+    
+    for i, (bar, p) in enumerate(zip(bar_slow, pop_s_show)):
         bar.set_height(p)
-    for bar, p in zip(bar_fast, pop_f_show):
+        text_slow[i].set_text(f"{p:.3f}") # 3 basamak hassasiyet
+        text_slow[i].set_y(p + 0.02)      # Yazıyı barın hafifçe üstüne yerleştir
+
+    for i, (bar, p) in enumerate(zip(bar_fast, pop_f_show)):
         bar.set_height(p)
+        text_fast[i].set_text(f"{p:.3f}")
+        text_fast[i].set_y(p + 0.02)
 
     # Norm kontrolü (sayısal hata takibi)
     norm_f = float(np.sum(pop_f))
@@ -240,7 +247,7 @@ def animate(frame):
 
     return (wall_slow, wall_fast, line_exp_slow, line_exp_fast,
             *E_lines_slow, *E_lines_fast, txt_norm_fast,
-            *bar_slow, *bar_fast)
+            *bar_slow, *bar_fast, *text_slow, *text_fast)
 
 # Butonlar için figürün altında ufak bir boşluk (0.08) bırakıyoruz
 plt.tight_layout(rect=[0, 0.08, 1, 0.97])
@@ -252,7 +259,6 @@ ani = animation.FuncAnimation(
 # ==========================================
 # 6. KONTROL BUTONLARI (PLAY/PAUSE & REPLAY)
 # ==========================================
-# Eksen pozisyonları: [sol, alt, genişlik, yükseklik]
 ax_play = plt.axes([0.42, 0.02, 0.07, 0.04])
 ax_replay = plt.axes([0.51, 0.02, 0.07, 0.04])
 
@@ -262,7 +268,7 @@ btn_replay = Button(ax_replay, 'Replay', color=COLORS['grid'], hovercolor='#3747
 btn_play.label.set_color('white')
 btn_replay.label.set_color('white')
 
-is_playing = [True] # Global değişken yerine referans tutmak için liste
+is_playing = [True]
 
 def toggle_play(event):
     if is_playing[0]:
@@ -275,7 +281,6 @@ def toggle_play(event):
     fig.canvas.draw_idle()
 
 def restart_anim(event):
-    # Animasyon karelerini başa sarar
     ani.frame_seq = ani.new_frame_seq()
     if not is_playing[0]:
         ani.resume()
