@@ -7,7 +7,9 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
+# ==========================================
 # 1. SİMÜLASYON PARAMETRELERİ
+# ==========================================
 L0    = 1.0    # Başlangıç kuyu genişliği
 L_end = 10     # Bitiş kuyu genişliği
 v_fast = 4.0   # Hızlı (irreversible) genişleme hızı
@@ -124,7 +126,6 @@ setup_ax(ax_wave_fast, f"Irreversible (v={v_fast})", COLORS['fast_wave'])
 for ax in (ax_pop_slow, ax_pop_fast):
     ax.set_facecolor(COLORS['bg'])
     ax.set_xlim(-0.5, n_show + 0.5)
-    # Metinler sığsın diye y limitini 1.05'ten 1.15'e çıkardık
     ax.set_ylim(0, 1.15) 
     ax.tick_params(colors='#607d8b')
     for sp in ax.spines.values():
@@ -153,7 +154,6 @@ bar_slow = ax_pop_slow.bar(range(1, n_show+1), np.zeros(n_show),
 bar_fast = ax_pop_fast.bar(range(1, n_show+1), np.zeros(n_show),
                             color=COLORS['fast_wave'], alpha=0.85, width=0.5)
 
-# YENİ EKLENEN KISIM: Barların üzerine gelecek olan metin objeleri oluşturuluyor
 text_slow = [ax_pop_slow.text(i+1, 0, "", ha='center', va='bottom', color=COLORS['text'], fontsize=10, fontweight='bold') for i in range(n_show)]
 text_fast = [ax_pop_fast.text(i+1, 0, "", ha='center', va='bottom', color=COLORS['text'], fontsize=10, fontweight='bold') for i in range(n_show)]
 
@@ -164,11 +164,21 @@ txt_norm_fast = ax_wave_fast.text(
 
 wave_scale = 2.5
 
+# Oynatma kontrolünü en baştan False yapıyoruz
+is_playing = [False]
+
 # ==========================================
 # 5. ANİMASYON
 # ==========================================
 def animate(frame):
     global fill_slow_obj, fill_fast_obj
+
+    # KUSURSUZ DONDURMA HİLESİ:
+    # Arayüz tam çizildikten sonraki ilk animasyon tick'inde (frame=1) zamanı donduruyoruz.
+    # Sonra ekrana frame=0 (yani t=0) anını çizdiriyoruz. Böylece yutulma hatası sıfırlanıyor.
+    if frame == 1 and not is_playing[0]:
+        ani.pause()
+        frame = 0
 
     # --- Adyabatik frame ---
     t_s = t_slow[frame]
@@ -224,21 +234,19 @@ def animate(frame):
         color=COLORS['fast_wave'], alpha=0.55, linewidth=0
     )
 
-    # Popülasyon barları ve üzerlerindeki metinlerin anlık güncellenmesi
     pop_s_show = pop_s[:n_show]
     pop_f_show = pop_f[:n_show]
     
     for i, (bar, p) in enumerate(zip(bar_slow, pop_s_show)):
         bar.set_height(p)
-        text_slow[i].set_text(f"{p:.3f}") # 3 basamak hassasiyet
-        text_slow[i].set_y(p + 0.02)      # Yazıyı barın hafifçe üstüne yerleştir
+        text_slow[i].set_text(f"{p:.3f}")
+        text_slow[i].set_y(p + 0.02)
 
     for i, (bar, p) in enumerate(zip(bar_fast, pop_f_show)):
         bar.set_height(p)
         text_fast[i].set_text(f"{p:.3f}")
         text_fast[i].set_y(p + 0.02)
 
-    # Norm kontrolü (sayısal hata takibi)
     norm_f = float(np.sum(pop_f))
     if abs(norm_f - 1.0) > 0.01:
         txt_norm_fast.set_text(f"Norm: {norm_f:.4f} !")
@@ -249,7 +257,6 @@ def animate(frame):
             *E_lines_slow, *E_lines_fast, txt_norm_fast,
             *bar_slow, *bar_fast, *text_slow, *text_fast)
 
-# Butonlar için figürün altında ufak bir boşluk (0.08) bırakıyoruz
 plt.tight_layout(rect=[0, 0.08, 1, 0.97])
 
 ani = animation.FuncAnimation(
@@ -262,13 +269,11 @@ ani = animation.FuncAnimation(
 ax_play = plt.axes([0.42, 0.02, 0.07, 0.04])
 ax_replay = plt.axes([0.51, 0.02, 0.07, 0.04])
 
-btn_play = Button(ax_play, 'Pause', color=COLORS['grid'], hovercolor='#37474f')
+btn_play = Button(ax_play, 'Play', color=COLORS['grid'], hovercolor='#37474f')
 btn_replay = Button(ax_replay, 'Replay', color=COLORS['grid'], hovercolor='#37474f')
 
 btn_play.label.set_color('white')
 btn_replay.label.set_color('white')
-
-is_playing = [True]
 
 def toggle_play(event):
     if is_playing[0]:
@@ -282,12 +287,11 @@ def toggle_play(event):
 
 def restart_anim(event):
     ani.frame_seq = ani.new_frame_seq()
+    
     if not is_playing[0]:
-        ani.resume()
-        btn_play.label.set_text('Pause')
-        is_playing[0] = True
+        animate(0)
     fig.canvas.draw_idle()
-
+    
 btn_play.on_clicked(toggle_play)
 btn_replay.on_clicked(restart_anim)
 
