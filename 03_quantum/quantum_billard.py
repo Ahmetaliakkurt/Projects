@@ -1,77 +1,95 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
+from scipy.fft import dstn, idstn
+import warnings
+
+warnings.filterwarnings("ignore")
 
 # ==========================================
-# 1. PARAMETRELER (Büyük Kutu, Küçük Paket)
+# 1. PARAMETRELER 
 # ==========================================
-L = 10.0           # Kutu boyutu (Genişletildi)
-N = 500            # Grid çözünürlüğü (Pürüzsüzlük için artırıldı)
-n_max = 120        # Baz fonksiyonu sayısı (Küçük paket için yüksek tutulmalı)
+L = 20.0           # Büyük Kutu
+N = 400            # Yüksek Grid Çözünürlüğü
 hbar = 1.0
-mass = 1.0
+mass = 3.0         # DAĞILMAYI AZALTMAK İÇİN KÜTLE ARTIRILDI!
 
-# Küçük Gaussian Paket Parametreleri
-x0, y0 = 5.0, 5.0    # Başlangıç konumu
-sigma = 0.35         # Paket genişliği (Daha küçük/keskin)
-kx0, ky0 = 15.0, 10.0 # Başlangıç momentumu
+# Dalga Paketi
+x0, y0 = 10.0, 10.0  
+sigma = 1.0        # Belirsizlik ilkesi dengesi için optimize edildi
+kx0, ky0 = 18.0, 14.0 # Başlangıç momentumu
 
-x_vec = np.linspace(0, L, N)
-y_vec = np.linspace(0, L, N)
-X, Y = np.meshgrid(x_vec, y_vec)
+x = np.linspace(0, L, N)
+y = np.linspace(0, L, N)
+X, Y = np.meshgrid(x, y)
 
 # ==========================================
-# 2. SPEKTRAL ANALİZ (Analitik Çözüm)
+# 2. İLK DURUM HAZIRLIĞI
 # ==========================================
-# İlk Durum: Gaussian
 psi_0 = np.exp(-((X - x0)**2 + (Y - y0)**2) / (2 * sigma**2)) * \
         np.exp(1j * (kx0 * X + ky0 * Y))
+
+# Sınır koşulları (Duvarlarda dalga 0 olmalı)
+psi_0[[0, -1], :] = 0
+psi_0[:, [0, -1]] = 0
 
 # Normalizasyon
 psi_0 /= np.sqrt(np.sum(np.abs(psi_0)**2) * (L/N)**2)
 
-print(f"Spektral katsayılar hesaplanıyor (n_max={n_max})...")
+# Sadece iç noktaları al (Sınırlar her zaman 0 olduğu için DST'ye girmez)
+psi_inner = psi_0[1:-1, 1:-1]
 
-# Baz fonksiyonları (Sinüsler) ve Katsayılar (DST-II benzeri projeksiyon)
-n_vals = np.arange(1, n_max + 1)
-# Matris çarpımı ile hızlı projeksiyon: C = <phi_nm | psi_0>
-sin_X = np.sin(np.outer(x_vec, n_vals) * np.pi / L)
-sin_Y = np.sin(np.outer(y_vec, n_vals) * np.pi / L)
+print("FFT (DST) Başlangıç durumu hesaplanıyor...")
 
-# Spektral katsayı matrisi (n_max x n_max)
-# Katsayılar = (Integral psi_0 * sin_n * sin_m)
-C = (sin_Y.T @ psi_0 @ sin_X) * (4.0 / N**2) 
+# ==========================================
+# 3. FFT (DST) TABANLI ZAMAN EVRİMİ
+# ==========================================
+# Başlangıç durumunu Spektral (Momentum) Uzayına geçir (Type 1 DST tam uyar)
+# norm='ortho' dalganın toplam olasılığını korur
+C = dstn(psi_inner, type=1, norm='ortho')
 
-# Enerji Seviyeleri: E_nm = (hbar^2 * pi^2 / 2mL^2) * (n^2 + m^2)
+# Enerji Seviyelerini (E_nm) oluştur
+n_vals = np.arange(1, N - 1)
+n_X, n_Y = np.meshgrid(n_vals, n_vals) # X sütunlar, Y satırlar
+
 E_scale = (np.pi**2 * hbar**2) / (2 * mass * L**2)
-E_n = n_vals**2
-E_nm = np.add.outer(E_n, E_n) * E_scale
+E_nm = (n_X**2 + n_Y**2) * E_scale
 
 def get_psi_at_t(t):
-    """Zaman evrimi spektral uzayda faz kaydırmadır."""
-    # psi(t) = sum C_nm * exp(-i E_nm t / hbar) * phi_nm
+    """Zaman evrimi sadece spektral katsayıların fazını döndürmektir."""
+    # 1. Faz kaydırmayı uygula: exp(-iEt/hbar)
     C_t = C * np.exp(-1j * (E_nm / hbar) * t)
-    return sin_Y @ C_t @ sin_X.T
+    
+    # 2. Ters DST ile tekrar Konum Uzayına dön
+    psi_t_inner = idstn(C_t, type=1, norm='ortho')
+    
+    # 3. Duvarları (0'ları) geri ekleyerek tam grid'i oluştur
+    psi_t = np.zeros((N, N), dtype=complex)
+    psi_t[1:-1, 1:-1] = psi_t_inner
+    return psi_t
 
 # ==========================================
-# 3. GÖRSELLEŞTİRME
+# 4. PÜRÜZSÜZ GÖRSELLEŞTİRME
 # ==========================================
-fig, ax = plt.subplots(figsize=(9, 8))
+fig, ax = plt.subplots(figsize=(9, 9))
 fig.patch.set_facecolor('#050505')
 ax.set_facecolor('#050505')
 
 psi_init = get_psi_at_t(0)
-im = ax.imshow(np.abs(psi_init)**2, extent=[0, L, 0, L], origin='lower',
-               cmap='magma', interpolation='spline36') # bicubic ile ekstra pürüzsüzlük
+prob_init = np.abs(psi_init)**2
 
-ax.set_title("2D Spektral Kuantum Bilardo", color='white', fontsize=12)
+# spline36 interpolasyonu ve inferno en iyi estetiği verir
+im = ax.imshow(prob_init, extent=[0, L, 0, L], origin='lower',
+               cmap='inferno', interpolation='spline36', vmax=np.max(prob_init)*0.9)
+
 ax.axis('off')
 
-# Kenarlar (Sonsuz Potansiyel Duvarları)
-rect = plt.Rectangle((0, 0), L, L, linewidth=2, edgecolor='#00ffcc', facecolor='none')
+# Neon Duvar Çizgileri
+rect = plt.Rectangle((0, 0), L, L, linewidth=3, edgecolor='#00ffcc', facecolor='none')
 ax.add_patch(rect)
 
-dt = 0.015
+# Hızlı işlem sayesinde dt'yi küçültüp animasyonu akıcılaştırabiliriz
+dt = 0.06 
 
 def update(frame):
     t = frame * dt
@@ -79,9 +97,11 @@ def update(frame):
     prob = np.abs(psi_t)**2
     
     im.set_array(prob)
-    # Dinamik kontrast ayarı: Paket yayıldıkça detayları görmek için
-    im.set_clim(0, np.max(prob) * 0.7)
+    # Kontrastı anlık ayarlayarak sönükleşmeyi engelle
+    im.set_clim(0, np.max(prob) * 0.85)
     return [im]
 
-ani = animation.FuncAnimation(fig, update, frames=600, interval=25, blit=True)
+ani = animation.FuncAnimation(fig, update, frames=800, interval=25, blit=True)
+
+print("FFT Simülasyonu Başladı! Daha derli toplu ve hızlı sekme hareketi izleniyor.")
 plt.show()
