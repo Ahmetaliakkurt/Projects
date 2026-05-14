@@ -7,14 +7,13 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
-# ==========================================
 # 1. SİMÜLASYON PARAMETRELERİ
-# ==========================================
+
 L0    = 1.0    # Başlangıç kuyu genişliği
 L_end = 10     # Bitiş kuyu genişliği
-v_fast = 4.0   # Hızlı (irreversible) genişleme hızı
-v_slow = 0.005 # Yavaş (adyabatik) genişleme hızı
-N_bas  = 12    # Süperpozisyon için durum sayısı
+v_fast = 4.0   # irreversible genişleme hızı
+v_slow = 0.005 # reversible genişleme hızı
+N_bas  = 12    # seri açılans seviye sayısı
 hbar   = 1.0
 m      = 1.0
 
@@ -25,9 +24,9 @@ frames = 500
 t_fast = np.linspace(0, T_fast, frames)
 t_slow = np.linspace(0, T_slow, frames)
 
-# ==========================================
-# 2. BAĞLANMA MATRİSİ — DOĞRU FORMÜL
-# ==========================================
+
+# 2. BAĞLANMA MATRİSİ
+
 def M_nm(n, m, L):
     if n == m:
         return 0.0
@@ -54,9 +53,8 @@ def build_ODE(v_exp):
         return dc
     return rhs
 
-# ==========================================
 # 3. ODE ÇÖZÜMÜ
-# ==========================================
+
 c0 = np.zeros(N_bas, dtype=complex)
 c0[0] = 1.0 + 0j   # Başlangıç: tamamen ground state
 
@@ -105,11 +103,11 @@ COLORS = {
     'text':      '#ffffff'
 }
 
-n_show = 7
+n_show = 10
 
 def setup_ax(ax, title, wave_color):
     ax.set_facecolor(COLORS['bg'])
-    ax.set_xlim(-0.1, L_end + 0.3)
+    ax.set_xlim(-0.5, L_end + 0.3)
     ax.set_ylim(-0.5, 22)
     ax.set_xlabel("Position x", color='#90a4ae', fontsize=10)
     ax.set_ylabel("Energy E", color='#90a4ae', fontsize=10)
@@ -127,6 +125,7 @@ for ax in (ax_pop_slow, ax_pop_fast):
     ax.set_facecolor(COLORS['bg'])
     ax.set_xlim(-0.5, n_show + 0.5)
     ax.set_ylim(0, 1.15) 
+    ax.set_xticks(range(1, n_show + 1))
     ax.tick_params(colors='#607d8b')
     for sp in ax.spines.values():
         sp.set_color(COLORS['grid'])
