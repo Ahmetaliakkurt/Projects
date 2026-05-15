@@ -77,10 +77,11 @@ ax.set_facecolor('#050505')
 
 psi_init = get_psi_at_t(0)
 prob_init = np.abs(psi_init)**2
+prob_init_max = np.max(prob_init) # Başlangıç maksimum değerini hafızaya al
 
-# spline36 interpolasyonu ve inferno en iyi estetiği verir
+# 'bicubic' yüksek frekanslı girişim desenlerinde spline36'dan daha yumuşak çalışır
 im = ax.imshow(prob_init, extent=[0, L, 0, L], origin='lower',
-               cmap='inferno', interpolation='spline36', vmax=np.max(prob_init)*0.9)
+               cmap='inferno', interpolation='bicubic', vmax=prob_init_max)
 
 ax.axis('off')
 
@@ -88,7 +89,6 @@ ax.axis('off')
 rect = plt.Rectangle((0, 0), L, L, linewidth=3, edgecolor='#00ffcc', facecolor='none')
 ax.add_patch(rect)
 
-# Hızlı işlem sayesinde dt'yi küçültüp animasyonu akıcılaştırabiliriz
 dt = 0.06 
 
 def update(frame):
@@ -97,8 +97,14 @@ def update(frame):
     prob = np.abs(psi_t)**2
     
     im.set_array(prob)
-    # Kontrastı anlık ayarlayarak sönükleşmeyi engelle
-    im.set_clim(0, np.max(prob) * 0.85)
+    
+    # KUSURSUZ KONTRAST AYARI:
+    # Çarpışma anındaki yapıcı girişim parlamalarını filtreliyoruz.
+    # Böylece arka plandaki sayısal pikseller (noise) görünmez oluyor.
+    current_max = np.max(prob)
+    limit = min(current_max * 0.85, prob_init_max * 1.5)
+    im.set_clim(0, limit)
+    
     return [im]
 
 ani = animation.FuncAnimation(fig, update, frames=800, interval=25, blit=True)

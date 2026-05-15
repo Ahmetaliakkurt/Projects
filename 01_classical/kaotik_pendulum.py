@@ -10,7 +10,6 @@ L1, L2 = 1.0, 1.0
 M1, M2 = 1.0, 1.0  
 
 def double_pendulum_derivs(t, state):
-    # State: [t1_n, w1_n, t2_n, w2_n, ...] şeklinde 4*N boyutlu vektör
     state = state.reshape(-1, 4)
     t1, w1, t2, w2 = state[:,0], state[:,1], state[:,2], state[:,3]
     
@@ -27,101 +26,70 @@ def double_pendulum_derivs(t, state):
     
     return np.stack([w1, dw1, w2, dw2], axis=1).flatten()
 
-# --- Görselleştirme Hazırlığı ---
-fig, ax_sim = plt.subplots(figsize=(10, 10))
-plt.subplots_adjust(top=0.85, bottom=0.2)
+# --- Görselleştirme ---
+fig, ax = plt.subplots(figsize=(9, 9))
+plt.subplots_adjust(top=0.9, bottom=0.2)
+ax.set_aspect('equal')
+ax.set_xlim(-2.2, 2.2); ax.set_ylim(-2.2, 2.2)
+ax.grid(True, alpha=0.15, linestyle='--')
 
-ax_sim.set_aspect('equal')
-ax_sim.set_xlim(-2.2, 2.2)
-ax_sim.set_ylim(-2.2, 2.2)
-ax_sim.grid(True, alpha=0.2, linestyle='--')
-
-# Kontrol değişkenleri
-is_running = False
 ani = None
 lines = []
+sol_y = None
+t_vals = None
+time_text = ax.text(0.05, 0.95, '', transform=ax.transAxes, fontweight='bold', fontsize=11)
 
-def run_simulation(num_n):
-    global ani, lines, is_running
-    is_running = False # Yeni simülasyon kurulurken durdur
-    ax_sim.clear()
-    ax_sim.set_xlim(-2.2, 2.2); ax_sim.set_ylim(-2.2, 2.2); ax_sim.grid(True, alpha=0.2)
+def start_sim(event):
+    global ani, lines, sol_y, t_vals, time_text
     
-    # Başlangıç Koşulları
-    t1_base = np.pi/2 # 90 derece
-    t2_base = np.pi   # 180 derece
+    if ani:
+        ani.event_source.stop()
+    
+    ax.clear()
+    ax.set_xlim(-2.2, 2.2); ax.set_ylim(-2.2, 2.2); ax.grid(True, alpha=0.15)
+    time_text = ax.text(0.05, 0.95, '', transform=ax.transAxes, fontweight='bold', fontsize=11)
+
+    try:
+        n = int(text_box.text)
+    except ValueError:
+        return
+
+    # Başlangıç Koşulu: +y'nin (180 derece) 1 derece sağı (179 derece)
+    # Her sarkaç arası delta_theta = 1 derece
+    t_start_deg = 179 
     y0 = []
+    for i in range(n):
+        theta_i = np.radians(t_start_deg - i) # Saat yönünde 1'er derece fark
+        y0.extend([theta_i, 0, theta_i, 0])   # Kollar dümdüz (theta1 = theta2)
     
-    for i in range(num_n):
-        # Her sarkaç bir öncekinden 1 derece daha saat yönünde (negatif yönde) başlar
-        offset = np.radians(i)
-        y0.extend([t1_base - offset, 0, t2_base, 0])
+    t_vals = np.linspace(0, 25, 1250)
+    sol = solve_ivp(double_pendulum_derivs, (0, 25), y0, t_eval=t_vals, method='RK45')
+    sol_y = sol.y
     
-    t_eval = np.linspace(0, 30, 1500)
-    sol = solve_ivp(double_pendulum_derivs, (0, 30), y0, t_eval=t_eval, method='RK45')
-    
-    colors = plt.cm.plasma(np.linspace(0, 1, num_n))
-    lines = [ax_sim.plot([], [], 'o-', lw=2, color=colors[i], alpha=0.6)[0] for i in range(num_n)]
-    
-    # Zaman göstergesi
-    time_text = ax_sim.text(0.05, 0.95, '', transform=ax_sim.transAxes, fontweight='bold')
+    colors = plt.cm.inferno(np.linspace(0.3, 0.9, n))
+    lines = [ax.plot([], [], 'o-', lw=2, color=colors[i], alpha=0.6, markersize=4)[0] for i in range(n)]
 
     def update(frame):
-        if not is_running: 
-            return lines + [time_text]
-        
-        for i in range(num_n):
+        for i in range(n):
             idx = i * 4
-            theta1, theta2 = sol.y[idx][frame], sol.y[idx+2][frame]
-            
-            x1 = L1 * np.sin(theta1)
-            y1 = -L1 * np.cos(theta1)
-            x2 = x1 + L2 * np.sin(theta2)
-            y2 = y1 - L2 * np.cos(theta2)
-            
+            th1, th2 = sol_y[idx][frame], sol_y[idx+2][frame]
+            x1, y1 = L1 * np.sin(th1), -L1 * np.cos(th1)
+            x2, y2 = x1 + L2 * np.sin(th2), y1 - L2 * np.cos(th2)
             lines[i].set_data([0, x1, x2], [0, y1, y2])
         
-        time_text.set_text(f'Zaman: {t_eval[frame]:.1f}s')
+        time_text.set_text(f'Zaman: {t_vals[frame]:.1f}s')
         return lines + [time_text]
 
-    # Başlangıç pozisyonunu çiz
-    for i in range(num_n):
-        idx = i * 4
-        theta1, theta2 = sol.y[idx][0], sol.y[idx+2][0]
-        x1, y1 = L1 * np.sin(theta1), -L1 * np.cos(theta1)
-        x2, y2 = x1 + L2 * np.sin(theta2), y1 - L2 * np.cos(theta2)
-        lines[i].set_data([0, x1, x2], [0, y1, y2])
-
-    ani = FuncAnimation(fig, update, frames=len(t_eval), interval=20, blit=True)
+    ani = FuncAnimation(fig, update, frames=len(t_vals), interval=20, blit=True, cache_frame_data=False)
     plt.draw()
 
-# --- Arayüz Elemanları ---
+# --- Arayüz ---
 ax_text = plt.axes([0.2, 0.05, 0.1, 0.05])
-text_box = TextBox(ax_text, 'Sarkaç Sayısı: ', initial="10")
+text_box = TextBox(ax_text, 'Sarkaç Sayısı: ', initial="1")
 
-ax_start = plt.axes([0.45, 0.05, 0.2, 0.05])
-btn_start = Button(ax_start, 'SİSTEMİ KUR / OYNAT')
+ax_start = plt.axes([0.45, 0.05, 0.25, 0.05])
+btn_start = Button(ax_start, 'Başlat', color='#c0392b', hovercolor='#e74c3c')
+btn_start.on_clicked(start_sim)
 
-def toggle_sim(event):
-    global is_running
-    if ani is None:
-        try:
-            n = int(text_box.text)
-            run_simulation(n)
-            is_running = True
-            btn_start.label.set_text('DURAKLAT')
-        except ValueError:
-            print("Lütfen geçerli bir sayı girin.")
-    else:
-        is_running = not is_running
-        btn_start.label.set_text('DURAKLAT' if is_running else 'DEVAM ET')
-    plt.draw()
-
-btn_start.on_clicked(toggle_sim)
-
-# Başlık ve Açıklama
-fig.suptitle("Çoklu Çift Sarkaç Simülasyonu", fontsize=16, fontweight='bold')
-fig.text(0.5, 0.9, r"Her sarkaç arası $\Delta\theta = 1^\circ$ fark vardır.", 
-         ha='center', fontsize=12, style='italic')
-
+fig.suptitle("Katotik Multi Sarkaç Sistemi", fontsize=14, fontweight='bold')
 plt.show()
