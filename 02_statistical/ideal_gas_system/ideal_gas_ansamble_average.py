@@ -13,7 +13,7 @@ N = 500           # Her evrendeki parçacık sayısı
 L = 10.0          # Kutu Boyutu
 m = 1.0           # Kütle
 dt = 0.005         # Zaman Adımı
-radius = 0.15     # Parçacık Yarıçapı
+radius = 0.001     # Parçacık Yarıçapı
 STEPS = 200       # Toplam Simülasyon Adımı (Zaman çözünürlüğü)
 
 # --- TERMODİNAMİK HEDEF (Sıcaklık Girdisi) ---

@@ -14,7 +14,7 @@ L = 10.0          # Kutu Boyutu (L x L)
 m = 1.0           # Parçacık Kütlesi
 v_max = 5.0       # Başlangıç Maksimum Hızı
 dt = 0.005        # Zaman Adımı
-radius = 0.15     # Çarpışma Yarıçapı
+radius = 0.001     # Çarpışma Yarıçapı
 
 # Hücre tabanlı çarpışma için grid
 CELL_SIZE = 2 * radius * 3  # Her hücre en az 1 çarpışmayı kapsar

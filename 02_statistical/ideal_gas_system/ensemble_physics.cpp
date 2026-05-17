@@ -4,10 +4,10 @@
 #include <omp.h>
 #include <vector>
 #include <cmath>
-#include <random>
 #include <algorithm>
 
 namespace py = pybind11;
+
 py::dict run_simulation(py::array_t<double, py::array::c_style | py::array::forcecast> pos_array, 
                         py::array_t<double, py::array::c_style | py::array::forcecast> vel_array, 
                         int M, int N, double L, double m, double dt, 
@@ -23,6 +23,14 @@ py::dict run_simulation(py::array_t<double, py::array::c_style | py::array::forc
     std::vector<double> mean_abs_py_data(steps, 0.0);
 
     double diam_sq = (2 * radius) * (2 * radius);
+    
+    // Hücre Tabanlı (Spatial Hashing) Ağ Kurulumu
+    double cell_size = 2.0 * radius * 3.0;
+    int n_cells_x = std::max(1, static_cast<int>(L / cell_size));
+    int n_cells_y = std::max(1, static_cast<int>(L / cell_size));
+    int total_cells = n_cells_x * n_cells_y;
+    double cs_x = L / n_cells_x;
+    double cs_y = L / n_cells_y;
 
     {
         py::gil_scoped_release release;
@@ -37,8 +45,10 @@ py::dict run_simulation(py::array_t<double, py::array::c_style | py::array::forc
 
             #pragma omp parallel
             {
-                std::mt19937 rng(42 + omp_get_thread_num() + step);
-                std::uniform_int_distribution<int> dist(0, N - 1);
+                // Her Thread için Linked-List Cell (Spatial Hash) bellek tahsisi
+                // (Döngü içinde malloc/new yapmamak için thread bazlı tutulur)
+                std::vector<int> head(total_cells, -1);
+                std::vector<int> next_node(N, -1);
 
                 double local_P = 0.0;
                 double local_KE = 0.0;
@@ -49,6 +59,7 @@ py::dict run_simulation(py::array_t<double, py::array::c_style | py::array::forc
                 for (int u = 0; u < M; ++u) {
                     double wall_impulse = 0.0;
 
+                    // 1. HAREKET VE DUVAR YANSIMALARI
                     for (int i = 0; i < N; ++i) {
                         double px = pos(u, i, 0) + vel(u, i, 0) * dt;
                         double py = pos(u, i, 1) + vel(u, i, 1) * dt;
@@ -67,39 +78,78 @@ py::dict run_simulation(py::array_t<double, py::array::c_style | py::array::forc
 
                     local_P += wall_impulse / (dt * 4 * L);
 
-                    for (int k = 0; k < k_pairs; ++k) {
-                        int i = dist(rng);
-                        int j = dist(rng);
-                        if (i == j) j = (j + 1) % N;
+                    // 2. MOLEKÜLER DİNAMİK (MD): HÜCRE TABANLI ÇARPIŞMALAR (O(N) Karmaşıklık)
+                    std::fill(head.begin(), head.end(), -1);
+                    std::fill(next_node.begin(), next_node.end(), -1);
 
-                        double dx = pos(u, j, 0) - pos(u, i, 0);
-                        double dy = pos(u, j, 1) - pos(u, i, 1);
-                        double dist_sq = dx * dx + dy * dy;
+                    // Parçacıkları grid'e yerleştir (Linked-list oluştur)
+                    for (int i = 0; i < N; ++i) {
+                        int cx = std::max(0, std::min(n_cells_x - 1, static_cast<int>(pos(u, i, 0) / cs_x)));
+                        int cy = std::max(0, std::min(n_cells_y - 1, static_cast<int>(pos(u, i, 1) / cs_y)));
+                        int cid = cx * n_cells_y + cy;
+                        
+                        next_node[i] = head[cid];
+                        head[cid] = i;
+                    }
 
-                        if (dist_sq < diam_sq && dist_sq > 1e-10) {
-                            double distance = std::sqrt(dist_sq);
-                            double nx = dx / distance;
-                            double ny = dy / distance;
+                    // Hücreleri ve komşularını tarayarak çarpışmaları kontrol et
+                    for (int cx = 0; cx < n_cells_x; ++cx) {
+                        for (int cy = 0; cy < n_cells_y; ++cy) {
+                            int cid = cx * n_cells_y + cy;
+                            int i = head[cid];
+                            
+                            while (i != -1) {
+                                // Komşu 9 hücreyi tara (Kendisi dahil)
+                                for (int dcx = -1; dcx <= 1; ++dcx) {
+                                    for (int dcy = -1; dcy <= 1; ++dcy) {
+                                        int ncx = cx + dcx;
+                                        int ncy = cy + dcy;
+                                        
+                                        if (ncx >= 0 && ncx < n_cells_x && ncy >= 0 && ncy < n_cells_y) {
+                                            int ncid = ncx * n_cells_y + ncy;
+                                            int j = head[ncid];
+                                            
+                                            while (j != -1) {
+                                                if (i < j) { // Çiftleri sadece bir kere hesapla (i < j)
+                                                    double dx = pos(u, j, 0) - pos(u, i, 0);
+                                                    double dy = pos(u, j, 1) - pos(u, i, 1);
+                                                    double dist_sq = dx * dx + dy * dy;
 
-                            double dvx = vel(u, j, 0) - vel(u, i, 0);
-                            double dvy = vel(u, j, 1) - vel(u, i, 1);
-                            double dot = dvx * nx + dvy * ny;
+                                                    if (dist_sq < diam_sq && dist_sq > 1e-10) {
+                                                        double dist = std::sqrt(dist_sq);
+                                                        double nx = dx / dist;
+                                                        double ny = dy / dist;
 
-                            if (dot < 0) { 
-                                vel(u, i, 0) += dot * nx;
-                                vel(u, i, 1) += dot * ny;
-                                vel(u, j, 0) -= dot * nx;
-                                vel(u, j, 1) -= dot * ny;
+                                                        double dvx = vel(u, j, 0) - vel(u, i, 0);
+                                                        double dvy = vel(u, j, 1) - vel(u, i, 1);
+                                                        double dot = dvx * nx + dvy * ny;
 
-                                double overlap = 2 * radius - distance;
-                                pos(u, i, 0) -= overlap * nx * 0.5;
-                                pos(u, i, 1) -= overlap * ny * 0.5;
-                                pos(u, j, 0) += overlap * nx * 0.5;
-                                pos(u, j, 1) += overlap * ny * 0.5;
+                                                        if (dot < 0) { 
+                                                            vel(u, i, 0) += dot * nx;
+                                                            vel(u, i, 1) += dot * ny;
+                                                            vel(u, j, 0) -= dot * nx;
+                                                            vel(u, j, 1) -= dot * ny;
+
+                                                            // İç içe geçme düzeltmesi
+                                                            double overlap = 2.0 * radius - dist;
+                                                            pos(u, i, 0) -= overlap * nx * 0.5;
+                                                            pos(u, i, 1) -= overlap * ny * 0.5;
+                                                            pos(u, j, 0) += overlap * nx * 0.5;
+                                                            pos(u, j, 1) += overlap * ny * 0.5;
+                                                        }
+                                                    }
+                                                }
+                                                j = next_node[j];
+                                            }
+                                        }
+                                    }
+                                }
+                                i = next_node[i];
                             }
                         }
                     }
 
+                    // 3. ENERJİ HESABI VE ÖLÇEKLEME
                     double current_ke = 0.0;
                     for (int i = 0; i < N; ++i) {
                         current_ke += 0.5 * m * (vel(u, i, 0) * vel(u, i, 0) + vel(u, i, 1) * vel(u, i, 1));
@@ -139,7 +189,6 @@ py::dict run_simulation(py::array_t<double, py::array::c_style | py::array::forc
         }
     } 
 
-    
     py::dict results;
     results["time_data"] = py::cast(time_data);
     results["ensemble_pressure"] = py::cast(ensemble_pressure_data);
