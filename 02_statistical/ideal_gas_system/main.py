@@ -2,13 +2,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 import time
 import warnings
-import fast_ensemble  # Senin C++ Canavarın!
+import fast_ensemble  # C++ motoru
 
 warnings.filterwarnings("ignore")
 
-# ==========================================
+
 # 1. ANSAMBLE PARAMETRELERİ
-# ==========================================
 M = 100000        # Paralel Evren Sayısı
 N = 500           # Her evrendeki parçacık sayısı
 L = 10.0          # Kutu Boyutu
@@ -27,9 +26,9 @@ print("C++ / OPENMP ANSAMBLE SİMÜLASYONU")
 print("=" * 50)
 print(f"Başlangıç matrisleri hazırlanıyor... ({M} Evren, Toplam {M*N} Atom)")
 
-# ==========================================
-# 2. BAŞLANGIÇ MATRİSLERİNİ HAZIRLAMA (RAM'DE)
-# ==========================================
+
+# 2. BAŞLANGIÇ MATRİSLERİNİ HAZIRLAMA
+
 pos = np.random.uniform(radius, L - radius, size=(M, N, 2))
 angles = np.random.uniform(0, 2 * np.pi, size=(M, N))
 speeds = np.random.uniform(1.0, 5.0, size=(M, N))
@@ -54,9 +53,8 @@ vel -= vel.mean(axis=1, keepdims=True)
 print("Fizik Motoru Tetiklendi! C++ çekirdekleri devrede...")
 start_time = time.time()
 
-# ==========================================
 # 3. İŞİ C++ MOTORUNA DEVRETME
-# ==========================================
+
 # 12 Çekirdeğin tamamı burada %100 yüke çıkacak
 results = fast_ensemble.run_simulation(
     pos, vel, M, N, L, m, dt, radius, STEPS, K_PAIRS, TARGET_KE
@@ -65,9 +63,9 @@ results = fast_ensemble.run_simulation(
 calc_time = time.time() - start_time
 print(f"Hesaplama Bitti! Toplam C++ süresi: {calc_time:.4f} saniye.")
 
-# ==========================================
+
 # 4. VERİLERİ PARÇALAMA VE HATA HESABI
-# ==========================================
+
 time_data = np.array(results["time_data"])
 pressure_data = np.array(results["ensemble_pressure"])
 ke_data = np.array(results["ke_data"])
@@ -79,9 +77,8 @@ error_data = (np.abs(pressure_data - P_theo) / P_theo) * 100.0
 overall_mean_p = np.mean(pressure_data)
 final_error = error_data[-1]
 
-# ==========================================
-# 5. GRAFİK KURULUMU (SENİN KOYU TEMAN)
-# ==========================================
+# 5. GRAFİK KURULUMU 
+
 print("Grafikler oluşturuluyor...")
 
 fig = plt.figure(figsize=(20, 10), facecolor='#0d0d0d')

@@ -1,12 +1,12 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
-#include <pybind11/stl.h>   // <--- İŞTE BÜTÜN SORUNU ÇÖZECEK O SİHİRLİ SATIR
+#include <pybind11/stl.h>   
 #include <omp.h>
 #include <vector>
 #include <cmath>
 #include <random>
 #include <algorithm>
-// GÜNCELLEME 1: C-Style ve Forcecast ile RAM hizalamasını garantiye alıyoruz
+
 namespace py = pybind11;
 py::dict run_simulation(py::array_t<double, py::array::c_style | py::array::forcecast> pos_array, 
                         py::array_t<double, py::array::c_style | py::array::forcecast> vel_array, 
@@ -24,7 +24,6 @@ py::dict run_simulation(py::array_t<double, py::array::c_style | py::array::forc
 
     double diam_sq = (2 * radius) * (2 * radius);
 
-    // GÜNCELLEME 2: GIL serbest bırakmayı bir Scope { } içine alıyoruz
     {
         py::gil_scoped_release release;
 
@@ -138,9 +137,9 @@ py::dict run_simulation(py::array_t<double, py::array::c_style | py::array::forc
             mean_abs_px_data[step] = total_px / M;
             mean_abs_py_data[step] = total_py / M;
         }
-    } // GÜNCELLEME 3: Süslü parantez kapandığında C++ GIL'i otomatik olarak geri alır!
+    } 
 
-    // Artık Python hafızasına yazmak tamamen güvenli
+    
     py::dict results;
     results["time_data"] = py::cast(time_data);
     results["ensemble_pressure"] = py::cast(ensemble_pressure_data);
