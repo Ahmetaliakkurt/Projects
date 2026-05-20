@@ -20,7 +20,7 @@ class QuantumWellApp:
         self.var_L = tk.DoubleVar(value=6.0)
         self.var_mass = tk.DoubleVar(value=1.0)
         self.var_power = tk.DoubleVar(value=8.0)
-        self.var_barrier = tk.DoubleVar(value=0.5) # Merkezi Bariyer Kalınlığı
+        self.var_barrier = tk.DoubleVar(value=0.5) 
         self.var_n_states = tk.IntVar(value=4)
 
         self.var_show_energy = tk.BooleanVar(value=True) 
@@ -40,20 +40,22 @@ class QuantumWellApp:
                               value="square", command=self.toggle_inputs)
         rb2.pack(anchor=tk.W, padx=5)
 
-        # SEÇENEK GÜNCELLENDİ: Double Well
         rb3 = ttk.Radiobutton(type_frame, text="Double Well (Tunneling)", variable=self.var_pot_type,
                               value="double_well", command=self.toggle_inputs)
         rb3.pack(anchor=tk.W, padx=5)
 
+        # 4. RADYO BUTONU: TRIPLE WELL
+        rb4 = ttk.Radiobutton(type_frame, text="Triple Well (Splitting)", variable=self.var_pot_type,
+                              value="triple_well", command=self.toggle_inputs)
+        rb4.pack(anchor=tk.W, padx=5)
+
         self.create_input(input_frame, "Potential Depth V0:", self.var_v0)
-        self.create_input(input_frame, "Width of ONE Well:", self.var_width)
+        self.create_input(input_frame, "Width of EACH Well:", self.var_width)
         self.create_input(input_frame, "Calculation Domain ±L:", self.var_L)
         self.create_input(input_frame, "Mass (m):", self.var_mass)
 
         self.power_frame, self.power_entry = self.create_input(input_frame, "Softness Exponent (Power):", self.var_power, return_widgets=True)
-        
-        # BARİYER GİRDİSİ GÜNCELLENDİ
-        self.barrier_frame, self.barrier_entry = self.create_input(input_frame, "Central Barrier Width:", self.var_barrier, return_widgets=True)
+        self.barrier_frame, self.barrier_entry = self.create_input(input_frame, "Barrier Width Between Wells:", self.var_barrier, return_widgets=True)
 
         self.create_input(input_frame, "Number of States:", self.var_n_states)
 
@@ -80,7 +82,7 @@ class QuantumWellApp:
         self.toggle_inputs()
 
         self.ax.axis('off')
-        self.ax.text(0.5, 0.5, "Select 'Double Well', enter parameters and press 'SOLVE AND PLOT'",
+        self.ax.text(0.5, 0.5, "Select Well type, enter parameters and press 'SOLVE AND PLOT'",
                      horizontalalignment='center', verticalalignment='center',
                      transform=self.ax.transAxes, fontsize=12, color='gray')
         self.canvas.draw()
@@ -107,6 +109,9 @@ class QuantumWellApp:
         elif selection == "double_well":
             self.power_entry.config(state='disabled')
             self.barrier_entry.config(state='normal')
+        elif selection == "triple_well":
+            self.power_entry.config(state='disabled')
+            self.barrier_entry.config(state='normal')
 
     def solve_schrodinger(self, V_array, x_array, dx, mass):
         N = len(V_array)
@@ -129,7 +134,7 @@ class QuantumWellApp:
             mass = self.var_mass.get()
             num_states = self.var_n_states.get()
 
-            N = 1000
+            N = 1200  # Çözünürlüğü 3 kuyu için biraz artırdık
             x = np.linspace(-L, L, N)
             dx = x[1] - x[0]
 
@@ -147,16 +152,28 @@ class QuantumWellApp:
             elif pot_type == "double_well":
                 barrier_w = self.var_barrier.get()
                 V = np.zeros_like(x)
-                
-                # --- YENİ: Simetrik Çift Kuyu Matematiği ---
-                # Sol kuyu: Bariyerin solundan başlar, 'width' kadar sola gider.
                 left_mask = (x > -barrier_w/2.0 - width) & (x < -barrier_w/2.0)
-                # Sağ kuyu: Bariyerin sağından başlar, 'width' kadar sağa gider.
                 right_mask = (x > barrier_w/2.0) & (x < barrier_w/2.0 + width)
-                
                 V[left_mask] = -V0
                 V[right_mask] = -V0
                 title = "SYMMETRIC DOUBLE QUANTUM WELL"
+            elif pot_type == "triple_well":
+                barrier_w = self.var_barrier.get()
+                V = np.zeros_like(x)
+                
+                # Merkez Kuyu
+                center_mask = (x > -width/2.0) & (x < width/2.0)
+                # Sağ Kuyu
+                right_start = width/2.0 + barrier_w
+                right_mask = (x > right_start) & (x < right_start + width)
+                # Sol Kuyu
+                left_end = -width/2.0 - barrier_w
+                left_mask = (x > left_end - width) & (x < left_end)
+                
+                V[center_mask] = -V0
+                V[right_mask] = -V0
+                V[left_mask] = -V0
+                title = "SYMMETRIC TRIPLE QUANTUM WELL"
 
             E, psi = self.solve_schrodinger(V, x, dx, mass)
 
@@ -212,11 +229,9 @@ class QuantumWellApp:
             psi_state = psi[:, i]
             highest_plotted_energy = max(highest_plotted_energy, E)
 
-            # Normalizasyon
             norm = np.sqrt(np.sum(np.abs(psi_state)**2) * dx)
             psi_norm = psi_state / norm
             
-            # Dinamik Ölçekleme
             max_amp = np.max(np.abs(psi_norm))
             if max_amp > 0:
                 visual_scale_factor = (scale * 0.6) / max_amp

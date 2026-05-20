@@ -10,7 +10,7 @@ warnings.filterwarnings("ignore")
 # ── 1. PARAMETRELERİ ──────────────────────────────────────────────────────────
 L0     = 1.0
 L_end  = 10.0
-v_fast = 4.0
+v_fast = 100.0
 v_slow = 0.005
 N_bas  = 12
 hbar   = 1.0
@@ -72,7 +72,7 @@ fig, axes = plt.subplots(
 )
 fig.patch.set_facecolor('#0d0f1a')
 fig.suptitle(
-    "Infinite Square Well — Reversible vs Irreversible Expansion",
+    "Infinite Square Well Adiabatic Expansion",
     color='white', fontsize=14, fontweight='bold', y=0.99
 )
 
@@ -106,24 +106,24 @@ def setup_lev(ax, title):
     ax.grid(True, color=GRID, lw=0.5, alpha=0.6)
     ax.axvline(0, color=WALL, lw=3)
 
-setup_lev(ax_lev_s, f"Reversible (v = {v_slow}) — Energy Levels")
-setup_lev(ax_lev_f, f"Irreversible (v = {v_fast}) — Energy Levels")
+setup_lev(ax_lev_s, f"Quasistatic (v = {v_slow}) — Energy Levels")
+setup_lev(ax_lev_f, f"Non-Quasistatic (v = {v_fast}) — Energy Levels")
 
 # ── Satır 1: SADECE toplam olasılık yoğunluğu ─────────────────────────────────
 def setup_tot(ax, title, col):
     ax.set_facecolor(BG)
     ax.set_xlim(-0.5, L_end + 0.3)
-    ax.set_ylim(-0.05, 4.5)
+    ax.set_ylim(-0.05, 1.1)
     ax.set_xlabel("Position  x",       color='#90a4ae', fontsize=9)
-    ax.set_ylabel(r"$|\psi(x,t)|^2$",  color='#90a4ae', fontsize=9)
+    ax.set_ylabel(r"Relative $|\psi(x,t)|^2$",  color='#90a4ae', fontsize=9)
     ax.set_title(title, color='white', fontsize=11, pad=5)
     ax.tick_params(colors='#607d8b', labelsize=8)
     for sp in ax.spines.values(): sp.set_color(GRID)
     ax.grid(True, color=GRID, lw=0.5, alpha=0.6)
     ax.axvline(0, color=WALL, lw=3)
 
-setup_tot(ax_tot_s, r"Probability Density  $|\psi(x,t)|^2$  —  Reversible",   '#4fc3f7')
-setup_tot(ax_tot_f, r"Probability Density  $|\psi(x,t)|^2$  —  Irreversible", '#ff7043')
+setup_tot(ax_tot_s, r"Probability Density  $|\psi(x,t)|^2$  —  Quasistatic",   '#4fc3f7')
+setup_tot(ax_tot_f, r"Probability Density  $|\psi(x,t)|^2$  —  Non-Quasistatic", '#ff7043')
 
 # ── Satır 2: popülasyon barları ───────────────────────────────────────────────
 def setup_pop(ax, title):
@@ -138,8 +138,8 @@ def setup_pop(ax, title):
     ax.set_ylabel("$|c_n|^2$",       color='#90a4ae', fontsize=9)
     ax.set_title(title, color='white', fontsize=11, pad=5)
 
-setup_pop(ax_pop_s, "Occupation Probabilities  —  Reversible")
-setup_pop(ax_pop_f, "Occupation Probabilities  —  Irreversible")
+setup_pop(ax_pop_s, "Occupation Probabilities  —  Quasistatic")
+setup_pop(ax_pop_f, "Occupation Probabilities  —  Non-Quasistatic")
 
 # ── Dinamik objeler ────────────────────────────────────────────────────────────
 
@@ -185,7 +185,8 @@ def animate(frame):
     pop_s = np.abs(c_s)**2
     
     psi_s     = np.einsum('n,nx->x', c_s, phi_s)
-    density_s = np.abs(psi_s)**2
+    # Maksimum yoğunluk başlangıçta 2/L0 olduğu için 1'e scale ediyoruz
+    density_s = np.abs(psi_s)**2 / (2.0 / L0)
 
     # ── Irreversible ──
     L_f   = L0 + v_fast * t_fast[frame]
@@ -196,7 +197,8 @@ def animate(frame):
     pop_f = np.abs(c_f)**2
     
     psi_f     = np.einsum('n,nx->x', c_f, phi_f)
-    density_f = np.abs(psi_f)**2
+    # Maksimum yoğunluk başlangıçta 2/L0 olduğu için 1'e scale ediyoruz
+    density_f = np.abs(psi_f)**2 / (2.0 / L0)
 
     # ── Satır 0 Güncellemeleri (Sadece Çizgiler) ──
     wall_lev_s.set_xdata([L_s, L_s])
