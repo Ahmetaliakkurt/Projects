@@ -5,14 +5,12 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
-# ── 1. SABİT PARAMETRELER ─────────────────────────────────────────────────────
 L0    = 1.0
 L_end = 10.0
 N_bas = 12
 hbar  = 1.0
 m     = 1.0
 
-# ── 2. BAĞLANMA MATRİSİ & ODE ─────────────────────────────────────────────────
 def M_nm(n, m, L):
     if n == m:            return 0.0
     if (n + m) % 2 == 0: return 0.0
@@ -34,14 +32,10 @@ def build_ODE(v_exp):
         return dc
     return rhs
 
-# ── 3. PARAMETRE TARAMASI (HIZ LİMİTLERİ) ─────────────────────────────────────
-# v değerlerini 0.005'ten 100.0'a kadar logaritmik olarak 40 adımda tarıyoruz
 v_values = np.logspace(np.log10(0.005), np.log10(100.0), 40)
 
-# Sonuçları saklayacağımız listeler
-p_ground_list = []   # Temel durumda (|c_1|^2) kalma olasılığı
-p_excited_list = []  # Üst seviyelere kaçış (1 - |c_1|^2) olasılığı
-
+p_ground_list = []   
+p_excited_list = []
 print("Adyabatik Sınır Analizi Başlıyor... (Bu işlem birkaç saniye sürebilir)")
 
 c0 = np.zeros(N_bas, dtype=complex)
@@ -50,14 +44,11 @@ c0[0] = 1.0 + 0j
 for v in v_values:
     T_end = (L_end - L0) / v
     
-    # Hızlı çözümler için toleransları bir tık gevşettik (1e-8 yeterlidir)
     sol = solve_ivp(build_ODE(v), [0, T_end], c0, 
                     method='DOP853', atol=1e-8, rtol=1e-8)
     
-    # Simülasyon sonundaki katsayıları al
     c_final = sol.y[:, -1]
     
-    # Temel durum olasılığı
     p1 = np.abs(c_final[0])**2
     
     p_ground_list.append(p1)
@@ -65,21 +56,17 @@ for v in v_values:
 
 print("Hesaplama Tamamlandı. Grafik Çiziliyor...")
 
-# ── 4. LİMİT GRAFİĞİNİN ÇİZİMİ ────────────────────────────────────────────────
 fig, ax = plt.subplots(figsize=(10, 6))
 fig.patch.set_facecolor('#0d0f1a')
 ax.set_facecolor('#0d0f1a')
 
-# Uyarılma eğrisi
 ax.plot(v_values, p_excited_list, marker='o', color='#ff7043', 
         linewidth=2, markersize=5, label='Total Excitation Probability ($1 - |c_1|^2$)')
 
-# Bölgeleri renklendirme
 ax.axvspan(0.001, 0.1, color='#4fc3f7', alpha=0.1, label='Adiabatic Regime')
 ax.axvspan(0.1, 10.0, color='#ffee58', alpha=0.1, label='Transition Regime')
 ax.axvspan(10.0, 200.0, color='#ef5350', alpha=0.1, label='Sudden (Non-Quasistatic) Regime')
 
-# Eksen ayarları
 ax.set_xscale('log')
 ax.set_ylim(-0.05, 1.05)
 ax.set_xlim(min(v_values), max(v_values))
