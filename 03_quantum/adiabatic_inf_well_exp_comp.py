@@ -7,16 +7,14 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
-# ── 1. PARAMETRELER (PÜRÜZSÜZ SALINIM PROFİLİ) ─────────────────────────────────
 L0     = 1.0
 L_end  = 10.0
 N_bas  = 12
 hbar   = 1.0
 m      = 1.0
 
-# Sinüzoidal profil sabitleri
-L_mid  = (L_end + L0) / 2.0  # 5.5
-delta_L = (L_end - L0) / 2.0 # 4.5
+L_mid  = (L_end + L0) / 2.0  
+delta_L = (L_end - L0) / 2.0 
 
 v_fast_max = 5.0
 v_slow_max = 0.05
@@ -36,7 +34,6 @@ def get_L_and_v(t, omega):
     v = delta_L * omega * np.sin(omega * t)
     return L, v
 
-# ── 2. BAĞLANMA MATRİSİ ───────────────────────────────────────────────────────
 def M_nm(n, m, L):
     if n == m:            return 0.0
     if (n + m) % 2 == 0: return 0.0
@@ -58,7 +55,6 @@ def build_ODE(omega):
         return dc
     return rhs
 
-# ── 3. ODE ÇÖZÜMÜ ─────────────────────────────────────────────────────────────
 c0    = np.zeros(N_bas, dtype=complex)
 c0[0] = 1.0 + 0j
 
@@ -72,7 +68,6 @@ c_fast = sol_fast.y
 c_slow = sol_slow.y
 print("Simulation Finished.")
 
-# ── 4. GÖRSEL KURULUM ─────────────────────────────────────────────────────────
 x_res  = 600
 n_show = 10
 
@@ -118,13 +113,11 @@ def setup_lev(ax, title):
 setup_lev(ax_lev_s, "Quasistatic Cycle — Energy Levels")
 setup_lev(ax_lev_f, "Non-Quasistatic Cycle — Energy Levels")
 
-# FİZİKSEL DÜZELTME: y_max 3.5 yapıldı (Kuyu 1.0 iken tepe noktası fiziksel olarak 2.0'dır)
 def setup_tot(ax, title):
     ax.set_facecolor(BG)
     ax.set_xlim(-0.5, L_end + 0.3)
     ax.set_ylim(-0.1, 3.5) 
     ax.set_xlabel("Position  x", color='#90a4ae', fontsize=9)
-    # Etiket saf "Olasılık Yoğunluğu" olarak düzeltildi
     ax.set_ylabel(r"Density $|\psi(x,t)|^2$", color='#90a4ae', fontsize=9) 
     ax.set_title(title, color='white', fontsize=11, pad=5)
     ax.tick_params(colors='#607d8b', labelsize=8)
@@ -135,9 +128,11 @@ def setup_tot(ax, title):
 setup_tot(ax_tot_s, r"Probability Density  $|\psi(x,t)|^2$  —  Quasistatic")
 setup_tot(ax_tot_f, r"Probability Density  $|\psi(x,t)|^2$  —  Non-Quasistatic")
 
-# FİZİKSEL KANIT: Dalganın altındaki toplam alanın her zaman 1.0 kaldığını gösteren sayıcılar
 txt_area_s = ax_tot_s.text(0.98, 0.85, "", transform=ax_tot_s.transAxes, ha='right', color='#4fc3f7', fontsize=10, fontweight='bold')
 txt_area_f = ax_tot_f.text(0.98, 0.85, "", transform=ax_tot_f.transAxes, ha='right', color='#ff7043', fontsize=10, fontweight='bold')
+
+ax_tot_s.text(0.98, 0.70, rf"$T = {T_slow:.2f}$ a.u.", transform=ax_tot_s.transAxes, ha='right', color='#b0bec5', fontsize=10, fontweight='bold')
+ax_tot_f.text(0.98, 0.70, rf"$T = {T_fast:.2f}$ a.u.", transform=ax_tot_f.transAxes, ha='right', color='#b0bec5', fontsize=10, fontweight='bold')
 
 def setup_pop(ax, title):
     ax.set_facecolor(BG)
@@ -170,7 +165,6 @@ txt_norm = ax_lev_f.text(0.98, 0.96, "", transform=ax_lev_f.transAxes, ha='right
 
 is_playing  = [False]
 
-# ── 5. ANİMASYON MOTORU ───────────────────────────────────────────────────────
 def animate(frame):
     global fill_tot_s, fill_tot_f
 
@@ -178,7 +172,6 @@ def animate(frame):
         ani.pause()
         frame = 0
 
-    # ── Quasistatic Adım ──
     t_s, _ = get_L_and_v(t_slow[frame], omega_slow)
     L_s = t_s  
     c_s = c_slow[:, frame]
@@ -187,13 +180,10 @@ def animate(frame):
     E_s = np.array([(n+1)**2 * np.pi**2 / (2*L_s**2) for n in range(N_bas)])
     
     psi_s = np.einsum('n,nx->x', c_s, phi_s)
-    # FİZİKSEL DÜZELTME: Yapay ölçekleme kaldırıldı, saf fiziksel yoğunluk
     density_s = np.abs(psi_s)**2 
     
-    # Gerçek zamanlı integral hesabı (Trapezoidal yöntem ile eğri altı alan)
     area_s = np.trapz(density_s, x_s)
 
-    # ── Non-Quasistatic Adım ──
     L_f, _ = get_L_and_v(t_fast[frame], omega_fast)
     c_f = c_fast[:, frame]
     x_f = np.linspace(0, L_f, x_res)
@@ -201,19 +191,16 @@ def animate(frame):
     E_f = np.array([(n+1)**2 * np.pi**2 / (2*L_f**2) for n in range(N_bas)])
     
     psi_f = np.einsum('n,nx->x', c_f, phi_f)
-    # FİZİKSEL DÜZELTME: Saf fiziksel yoğunluk
     density_f = np.abs(psi_f)**2 
     
     area_f = np.trapz(density_f, x_f)
 
-    # Güncellemeler (Satır 0)
     wall_lev_s.set_xdata([L_s, L_s])
     wall_lev_f.set_xdata([L_f, L_f])
     for k in range(n_show):
         E_lines_s[k].set_data([0, L_s], [E_s[k], E_s[k]])
         E_lines_f[k].set_data([0, L_f], [E_f[k], E_f[k]])
 
-    # Güncellemeler (Satır 1)
     wall_tot_s.set_xdata([L_s, L_s])
     wall_tot_f.set_xdata([L_f, L_f])
 
@@ -223,11 +210,9 @@ def animate(frame):
     fill_tot_s = ax_tot_s.fill_between(x_s, 0, density_s, color='#4fc3f7', alpha=0.65, linewidth=0)
     fill_tot_f = ax_tot_f.fill_between(x_f, 0, density_f, color='#ff7043', alpha=0.65, linewidth=0)
     
-    # Alan sayıcı metinlerini güncelle
     txt_area_s.set_text(rf"$\int |\psi|^2 dx = {area_s:.3f}$")
     txt_area_f.set_text(rf"$\int |\psi|^2 dx = {area_f:.3f}$")
 
-    # Güncellemeler (Satır 2)
     pop_s = np.abs(c_s)**2
     pop_f = np.abs(c_f)**2
     for i in range(n_show):
@@ -252,7 +237,6 @@ plt.tight_layout(rect=[0, 0.06, 1, 0.99])
 
 ani = animation.FuncAnimation(fig, animate, frames=frames, interval=30, blit=False)
 
-# ── 6. KONTROL BUTONLARI ──────────────────────────────────────────────────────
 ax_play   = plt.axes([0.42, 0.01, 0.07, 0.03])
 ax_replay = plt.axes([0.51, 0.01, 0.07, 0.03])
 btn_play   = Button(ax_play,   'Play',   color=GRID, hovercolor='#37474f')
