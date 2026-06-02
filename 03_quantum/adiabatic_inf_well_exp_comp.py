@@ -2,73 +2,92 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from matplotlib.widgets import Button
-from scipy.integrate import solve_ivp
+from scipy.linalg import expm
 import warnings
 
 warnings.filterwarnings("ignore")
 
 L0     = 1.0
-L_end  = 10.0
-N_bas  = 12
+L_turn = 6.0   
+L_end  = 8.0  
+N_bas  = 20
 hbar   = 1.0
 m      = 1.0
 
-L_mid  = (L_end + L0) / 2.0  
-delta_L = (L_end - L0) / 2.0 
-
 v_fast_max = 5.0
 v_slow_max = 0.05
+frames = 1300
+sub_steps = 10 
 
-omega_fast = v_fast_max / delta_L
-omega_slow = v_slow_max / delta_L
+def solve_time_evolution(v_max, num_frames=600, substeps=10):
+    t1 = (L_turn - L0) / v_max  
+    t2 = np.pi * (L_end - L_turn) / (2 * v_max) 
+    
+    T_total = 2 * (t1 + t2)    
+    t_eval = np.linspace(0, T_total, num_frames)
+    dt_frame = T_total / (num_frames - 1)
+    dt = dt_frame / substeps 
+    
+    c_history = np.zeros((N_bas, num_frames), dtype=complex)
+    L_history = np.zeros(num_frames)
+    v_history = np.zeros(num_frames)
+    
+    c = np.zeros(N_bas, dtype=complex)
+    c[0] = 1.0 + 0j
+    c_history[:, 0] = c
+    
+    def get_Lv(t_val):
+        if t_val <= t1:
+            return L0 + v_max * t_val, v_max
+        elif t_val <= t1 + 2*t2:
+            tau = t_val - t1
+            L = L_turn + (L_end - L_turn) * np.sin(np.pi * tau / (2 * t2))
+            v = v_max * np.cos(np.pi * tau / (2 * t2))
+            return L, v
+        else:
+            tau = t_val - (t1 + 2*t2)
+            return L_turn - v_max * tau, -v_max
 
-T_fast = 2 * np.pi / omega_fast
-T_slow = 2 * np.pi / omega_slow
+    L_history[0], v_history[0] = get_Lv(0)
 
-frames = 600
-t_fast = np.linspace(0, T_fast, frames)
-t_slow = np.linspace(0, T_slow, frames)
+    print(f"Çözülüyor: v_max = {v_max} | Delta t = {dt:.6f} ...")
+    
+    t_current = 0.0
+    for f in range(1, num_frames):
+        for _ in range(substeps):
+            # Orta nokta (Midpoint) hassasiyeti ile Hamiltoniyen parametreleri
+            L_mid, v_mid = get_Lv(t_current + dt / 2.0)
+            
+            # A Matrisi: -i * H_eff / hbar
+            A = np.zeros((N_bas, N_bas), dtype=complex)
+            for m_idx in range(N_bas):
+                n_q = m_idx + 1
+                E_m = (n_q**2 * np.pi**2 * hbar**2) / (2.0 * m * L_mid**2)
+                A[m_idx, m_idx] = -1j * (E_m / hbar)
+                
+                for n_idx in range(N_bas):
+                    if m_idx != n_idx:
+                        m_q = n_idx + 1
+                        if (n_q + m_q) % 2 != 0:
+                            M_val = -(2.0 * n_q * m_q) / (L_mid * (n_q**2 - m_q**2))
+                            A[m_idx, n_idx] = -v_mid * M_val
+            
+            U = expm(A * dt)
+            c = U @ c  
+            
+            t_current += dt
+            
+        c_history[:, f] = c
+        L_history[f], v_history[f] = get_Lv(t_current)
+        
+    return t_eval, L_history, v_history, c_history
 
-def get_L_and_v(t, omega):
-    L = L_mid - delta_L * np.cos(omega * t)
-    v = delta_L * omega * np.sin(omega * t)
-    return L, v
+print("Zaman Evrim Operatörü Devrede (U = exp(-iHt))...")
+t_f, L_f_arr, v_f_arr, c_fast = solve_time_evolution(v_fast_max, frames, sub_steps)
+t_s, L_s_arr, v_s_arr, c_slow = solve_time_evolution(v_slow_max, frames, sub_steps)
+print("Simülasyon Bitti. Arayüz Hazırlanıyor...")
 
-def M_nm(n, m, L):
-    if n == m:            return 0.0
-    if (n + m) % 2 == 0: return 0.0
-    return -(2.0 * n * m) / (L * (n**2 - m**2))
-
-def build_ODE(omega):
-    def rhs(t, c):
-        L, v = get_L_and_v(t, omega)
-        dc = np.zeros(N_bas, dtype=complex)
-        E  = np.array([(n+1)**2 * np.pi**2 * hbar**2 / (2*m*L**2)
-                       for n in range(N_bas)])
-        for i in range(N_bas):
-            dc[i] = -1j * (E[i] / hbar) * c[i]
-            for j in range(N_bas):
-                if j != i:
-                    Mij = M_nm(i+1, j+1, L)
-                    if Mij != 0.0:
-                        dc[i] -= v * Mij * c[j]
-        return dc
-    return rhs
-
-c0    = np.zeros(N_bas, dtype=complex)
-c0[0] = 1.0 + 0j
-
-print("Simulation Begins (Smooth Expansion & Contraction)...")
-sol_fast = solve_ivp(build_ODE(omega_fast), [0, T_fast], c0, t_eval=t_fast,
-                     method='DOP853', atol=1e-9, rtol=1e-9)
-sol_slow = solve_ivp(build_ODE(omega_slow), [0, T_slow], c0, t_eval=t_slow,
-                     method='DOP853', atol=1e-9, rtol=1e-9)
-
-c_fast = sol_fast.y
-c_slow = sol_slow.y
-print("Simulation Finished.")
-
-x_res  = 600
+x_res  = 1000
 n_show = 10
 
 fig, axes = plt.subplots(
@@ -77,7 +96,7 @@ fig, axes = plt.subplots(
 )
 fig.patch.set_facecolor('#0d0f1a')
 fig.suptitle(
-    "Infinite Square Well — Smooth Expansion & Contraction Cycle",
+    "Infinite Square Well — Time Evolution Operator (Flat-Top Velocity)",
     color='white', fontsize=14, fontweight='bold', y=0.99
 )
 
@@ -110,8 +129,11 @@ def setup_lev(ax, title):
     ax.grid(True, color=GRID, lw=0.5, alpha=0.6)
     ax.axvline(0, color=WALL, lw=3)
 
-setup_lev(ax_lev_s, "Quasistatic Cycle — Energy Levels")
-setup_lev(ax_lev_f, "Non-Quasistatic Cycle — Energy Levels")
+setup_lev(ax_lev_s, "Reversible Cycle — Energy Levels")
+setup_lev(ax_lev_f, "Irreversible Cycle — Energy Levels")
+
+txt_v_s = ax_lev_s.text(0.02, 0.96, "", transform=ax_lev_s.transAxes, ha='left', va='top', color='#4fc3f7', fontsize=11, fontweight='bold')
+txt_v_f = ax_lev_f.text(0.02, 0.96, "", transform=ax_lev_f.transAxes, ha='left', va='top', color='#ff7043', fontsize=11, fontweight='bold')
 
 def setup_tot(ax, title):
     ax.set_facecolor(BG)
@@ -125,14 +147,15 @@ def setup_tot(ax, title):
     ax.grid(True, color=GRID, lw=0.5, alpha=0.6)
     ax.axvline(0, color=WALL, lw=3)
 
-setup_tot(ax_tot_s, r"Probability Density  $|\psi(x,t)|^2$  —  Quasistatic")
-setup_tot(ax_tot_f, r"Probability Density  $|\psi(x,t)|^2$  —  Non-Quasistatic")
+setup_tot(ax_tot_s, r"Probability Density  $|\psi(x,t)|^2$  —  Reversible")
+setup_tot(ax_tot_f, r"Probability Density  $|\psi(x,t)|^2$  —  Irreversible")
 
 txt_area_s = ax_tot_s.text(0.98, 0.85, "", transform=ax_tot_s.transAxes, ha='right', color='#4fc3f7', fontsize=10, fontweight='bold')
 txt_area_f = ax_tot_f.text(0.98, 0.85, "", transform=ax_tot_f.transAxes, ha='right', color='#ff7043', fontsize=10, fontweight='bold')
 
-ax_tot_s.text(0.98, 0.70, rf"$T = {T_slow:.2f}$ a.u.", transform=ax_tot_s.transAxes, ha='right', color='#b0bec5', fontsize=10, fontweight='bold')
-ax_tot_f.text(0.98, 0.70, rf"$T = {T_fast:.2f}$ a.u.", transform=ax_tot_f.transAxes, ha='right', color='#b0bec5', fontsize=10, fontweight='bold')
+# Periyot göstergeleri (toplam t süresi)
+ax_tot_s.text(0.98, 0.70, rf"$T_{{cycle}} = {t_s[-1]:.2f}$ ", transform=ax_tot_s.transAxes, ha='right', color='#b0bec5', fontsize=10, fontweight='bold')
+ax_tot_f.text(0.98, 0.70, rf"$T_{{cycle}} = {t_f[-1]:.2f}$ ", transform=ax_tot_f.transAxes, ha='right', color='#b0bec5', fontsize=10, fontweight='bold')
 
 def setup_pop(ax, title):
     ax.set_facecolor(BG)
@@ -146,8 +169,8 @@ def setup_pop(ax, title):
     ax.set_ylabel("$|c_n|^2$",       color='#90a4ae', fontsize=9)
     ax.set_title(title, color='white', fontsize=11, pad=5)
 
-setup_pop(ax_pop_s, "Occupation Probabilities  —  Quasistatic")
-setup_pop(ax_pop_f, "Occupation Probabilities  —  Non-Quasistatic")
+setup_pop(ax_pop_s, "Occupation Probabilities  —  Reversible")
+setup_pop(ax_pop_f, "Occupation Probabilities  —  Irreversible")
 
 wall_lev_s = ax_lev_s.axvline(L0, color=WALL,  lw=3)
 wall_lev_f = ax_lev_f.axvline(L0, color=WALL,  lw=3)
@@ -165,6 +188,7 @@ txt_norm = ax_lev_f.text(0.98, 0.96, "", transform=ax_lev_f.transAxes, ha='right
 
 is_playing  = [False]
 
+# ── 5. ANİMASYON MOTORU ───────────────────────────────────────────────────────
 def animate(frame):
     global fill_tot_s, fill_tot_f
 
@@ -172,29 +196,32 @@ def animate(frame):
         ani.pause()
         frame = 0
 
-    t_s, _ = get_L_and_v(t_slow[frame], omega_slow)
-    L_s = t_s  
+    # Önceden Zaman Evrim Operatörü ile çözülmüş dizilerden veriyi çek
+    L_s = L_s_arr[frame]
+    v_s = v_s_arr[frame]
     c_s = c_slow[:, frame]
+    
     x_s = np.linspace(0, L_s, x_res)
     phi_s = np.array([np.sqrt(2/L_s) * np.sin((n+1)*np.pi*x_s/L_s) for n in range(N_bas)])
     E_s = np.array([(n+1)**2 * np.pi**2 / (2*L_s**2) for n in range(N_bas)])
     
     psi_s = np.einsum('n,nx->x', c_s, phi_s)
     density_s = np.abs(psi_s)**2 
-    
     area_s = np.trapz(density_s, x_s)
 
-    L_f, _ = get_L_and_v(t_fast[frame], omega_fast)
+    L_f = L_f_arr[frame]
+    v_f = v_f_arr[frame]
     c_f = c_fast[:, frame]
+    
     x_f = np.linspace(0, L_f, x_res)
     phi_f = np.array([np.sqrt(2/L_f) * np.sin((n+1)*np.pi*x_f/L_f) for n in range(N_bas)])
     E_f = np.array([(n+1)**2 * np.pi**2 / (2*L_f**2) for n in range(N_bas)])
     
     psi_f = np.einsum('n,nx->x', c_f, phi_f)
     density_f = np.abs(psi_f)**2 
-    
     area_f = np.trapz(density_f, x_f)
 
+    # Arayüz güncellemeleri
     wall_lev_s.set_xdata([L_s, L_s])
     wall_lev_f.set_xdata([L_f, L_f])
     for k in range(n_show):
@@ -212,6 +239,9 @@ def animate(frame):
     
     txt_area_s.set_text(rf"$\int |\psi|^2 dx = {area_s:.3f}$")
     txt_area_f.set_text(rf"$\int |\psi|^2 dx = {area_f:.3f}$")
+    
+    txt_v_s.set_text(rf"$v(t) = {v_s:+.3f}$")
+    txt_v_f.set_text(rf"$v(t) = {v_f:+.3f}$")
 
     pop_s = np.abs(c_s)**2
     pop_f = np.abs(c_f)**2
@@ -231,11 +261,12 @@ def animate(frame):
 
     return (wall_lev_s, wall_lev_f, wall_tot_s, wall_tot_f,
             *E_lines_s, *E_lines_f, txt_norm, txt_area_s, txt_area_f,
+            txt_v_s, txt_v_f,
             *bar_s, *bar_f, *txt_s, *txt_f)
 
 plt.tight_layout(rect=[0, 0.06, 1, 0.99])
 
-ani = animation.FuncAnimation(fig, animate, frames=frames, interval=30, blit=False)
+ani = animation.FuncAnimation(fig, animate, frames=frames, interval=15, blit=False)
 
 ax_play   = plt.axes([0.42, 0.01, 0.07, 0.03])
 ax_replay = plt.axes([0.51, 0.01, 0.07, 0.03])

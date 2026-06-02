@@ -1,61 +1,81 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.integrate import solve_ivp
+from scipy.linalg import expm
 import warnings
 
 warnings.filterwarnings("ignore")
 
+# ── 1. SABİT PARAMETRELER ─────────────────────────────────────────────────────
 L0    = 1.0
 L_end = 10.0
-N_bas = 12
+N_bas = 20
 hbar  = 1.0
 m     = 1.0
 
+# ── 2. BAĞLANMA MATRİSİ ───────────────────────────────────────────────────────
 def M_nm(n, m, L):
     if n == m:            return 0.0
     if (n + m) % 2 == 0: return 0.0
     return -(2.0 * n * m) / (L * (n**2 - m**2))
 
-def build_ODE(v_exp):
-    def rhs(t, c):
-        L  = L0 + v_exp * t
-        dc = np.zeros(N_bas, dtype=complex)
-        E  = np.array([(n+1)**2 * np.pi**2 * hbar**2 / (2*m*L**2)
-                       for n in range(N_bas)])
-        for i in range(N_bas):
-            dc[i] = -1j * (E[i] / hbar) * c[i]
-            for j in range(N_bas):
-                if j != i:
-                    Mij = M_nm(i+1, j+1, L)
-                    if Mij != 0.0:
-                        dc[i] -= v_exp * Mij * c[j]
-        return dc
-    return rhs
-
+# ── 3. PARAMETRE TARAMASI (Zaman Evrim Operatörü İle) ─────────────────────────
 v_values = np.logspace(np.log10(0.005), np.log10(100.0), 40)
+
+# Hassasiyet ayarı: Duvarın L=1'den L=10'a gidişi kaç adımda bölünecek?
+# 2000 adım demek, her döngüde duvarın sadece 0.0045 birim ilerlemesi demektir.
+N_steps = 2000  
 
 p_ground_list = []   
 p_excited_list = []
-print("Adyabatik Sınır Analizi Başlıyor... (Bu işlem birkaç saniye sürebilir)")
 
-c0 = np.zeros(N_bas, dtype=complex)
-c0[0] = 1.0 + 0j
+print("Hesaplama Başlıyor")
+
+# Hızlandırmak için enerji çarpanlarını önceden hesaplıyoruz (n^2 * pi^2 * hbar^2 / 2m)
+n_array = np.arange(1, N_bas + 1)
+E_factors = (n_array**2 * np.pi**2 * hbar**2) / (2.0 * m)
 
 for v in v_values:
-    T_end = (L_end - L0) / v
+    # Her hız için geçecek toplam süreye göre adım aralığı (Delta t)
+    dt = (L_end - L0) / (v * N_steps)
     
-    sol = solve_ivp(build_ODE(v), [0, T_end], c0, 
-                    method='DOP853', atol=1e-8, rtol=1e-8)
+    c = np.zeros(N_bas, dtype=complex)
+    c[0] = 1.0 + 0j
     
-    c_final = sol.y[:, -1]
-    
-    p1 = np.abs(c_final[0])**2
+    # Kuantum durumu N_steps boyunca geleceğe taşı (Propagator Loop)
+    for step in range(N_steps):
+        # Orta nokta entegrasyonu (Midpoint Rule) ile hassasiyeti artırıyoruz
+        t_mid = (step + 0.5) * dt
+        L_mid = L0 + v * t_mid
+        
+        # Etkin Hamiltoniyen Matrisinin (A = -i * H_eff / hbar) İnşası
+        A = np.zeros((N_bas, N_bas), dtype=complex)
+        
+        for i in range(N_bas):
+            # Köşegen (Enerji) Elemanları
+            E_i = E_factors[i] / (L_mid**2)
+            A[i, i] = -1j * E_i / hbar
+            
+            # Çapraz (Bağlanma - Kinetik Şok) Elemanları
+            for j in range(N_bas):
+                if i != j:
+                    M_val = M_nm(i + 1, j + 1, L_mid)
+                    if M_val != 0.0:
+                        A[i, j] = -v * M_val
+        
+        # Zaman Evrim Operatörü: U(t, t+dt) = exp(A * dt)
+        U = expm(A * dt)
+        
+        # Dalga fonksiyonunu bir adım ileri ışınla
+        c = U @ c
+        
+    # Simülasyon bittiğinde (L=10'a ulaşıldığında) temel durumdaki olasılığı hesapla
+    p1 = np.abs(c[0])**2
     
     p_ground_list.append(p1)
     p_excited_list.append(1.0 - p1)
+print("\nHesaplama Tamamlandı.")
 
-print("Hesaplama Tamamlandı. Grafik Çiziliyor...")
-
+# ── 4. LİMİT GRAFİĞİNİN ÇİZİMİ ────────────────────────────────────────────────
 fig, ax = plt.subplots(figsize=(10, 6))
 fig.patch.set_facecolor('#0d0f1a')
 ax.set_facecolor('#0d0f1a')
@@ -71,7 +91,7 @@ ax.set_xscale('log')
 ax.set_ylim(-0.05, 1.05)
 ax.set_xlim(min(v_values), max(v_values))
 
-ax.set_title("Quantum Adiabaticity Boundary: Velocity vs Excitation", color='white', fontsize=14, pad=15)
+ax.set_title("Quantum Adiabaticity Boundary: Velocity vs Excitation (expm)", color='white', fontsize=14, pad=15)
 ax.set_xlabel("Expansion Velocity ($v$) — Log Scale", color='#90a4ae', fontsize=12)
 ax.set_ylabel("Excitation Probability (Non-Quasistaticity)", color='#90a4ae', fontsize=12)
 
