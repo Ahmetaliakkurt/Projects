@@ -7,6 +7,7 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
+# ── 1. FİZİKSEL PARAMETRELER ──────────────────────────────────────────────────
 L0     = 1.0
 L_turn = 6.0   
 L_end  = 8.0  
@@ -19,6 +20,7 @@ v_slow_max = 0.05
 frames = 1300
 sub_steps = 10 
 
+# ── 2. ZAMAN EVRİM OPERATÖRÜ ÇÖZÜCÜSÜ ─────────────────────────────────────────
 def solve_time_evolution(v_max, num_frames=600, substeps=10):
     t1 = (L_turn - L0) / v_max  
     t2 = np.pi * (L_end - L_turn) / (2 * v_max) 
@@ -85,8 +87,51 @@ def solve_time_evolution(v_max, num_frames=600, substeps=10):
 print("Zaman Evrim Operatörü Devrede (U = exp(-iHt))...")
 t_f, L_f_arr, v_f_arr, c_fast = solve_time_evolution(v_fast_max, frames, sub_steps)
 t_s, L_s_arr, v_s_arr, c_slow = solve_time_evolution(v_slow_max, frames, sub_steps)
-print("Simülasyon Bitti. Arayüz Hazırlanıyor...")
+print("Simülasyon Bitti.")
 
+# ── 3. ENERJİ (EXPECTATION VALUE) HESAPLAMASI VE GRAFİĞİ ──────────────────────
+print("Enerji Beklenen Değerleri Hesaplanıyor <E> ...")
+
+n_array = np.arange(1, N_bas + 1)[:, np.newaxis] 
+
+# Her frame için anlık enerji seviyeleri E_n(t) matrisi
+E_n_slow = (n_array**2 * np.pi**2 * hbar**2) / (2.0 * m * L_s_arr**2)
+E_n_fast = (n_array**2 * np.pi**2 * hbar**2) / (2.0 * m * L_f_arr**2)
+
+# Beklenen Enerji: <E> = Toplam( |c_n|^2 * E_n )
+E_exp_slow = np.sum(np.abs(c_slow)**2 * E_n_slow, axis=0)
+E_exp_fast = np.sum(np.abs(c_fast)**2 * E_n_fast, axis=0)
+
+# DÜZELTME: Zamanları kendi periyotlarına bölerek (0 ile 1 arasına) normalize ediyoruz
+t_s_norm = t_s / t_s[-1]
+t_f_norm = t_f / t_f[-1]
+
+plt.figure(figsize=(10, 6), facecolor='#0d0f1a')
+ax_e = plt.axes()
+ax_e.set_facecolor('#0d0f1a')
+
+# X eksenine artık normalize zamanı veriyoruz
+plt.plot(t_s_norm, E_exp_slow, color='#4fc3f7', lw=3, label='Reversible (Slow) Energy')
+plt.plot(t_f_norm, E_exp_fast, color='#ff7043', lw=3, label='Irreversible (Fast) Energy')
+
+# Maksimum genleşme anı tam olarak döngünün yarısıdır (0.5)
+plt.axvline(0.5, color='#eceff1', linestyle='--', alpha=0.5, label='Maximum Expansion ($L=8$)')
+
+plt.title("Expectation Value of Energy Over Normalized Cycle", color='white', fontsize=14)
+plt.xlabel("Normalized Time ($t / T_{cycle}$)  [0.0 = Başlangıç, 1.0 = Bitiş]", color='#90a4ae', fontsize=12)
+plt.ylabel("Energy $\\langle E \\rangle$", color='#90a4ae', fontsize=12)
+plt.grid(True, color='#1e2030', lw=1, alpha=0.8)
+ax_e.tick_params(colors='#607d8b')
+for sp in ax_e.spines.values(): sp.set_color('#1e2030')
+
+legend = plt.legend(facecolor='#0d0f1a', edgecolor='#1e2030')
+for text in legend.get_texts(): text.set_color('white')
+
+plt.tight_layout()
+plt.show(block=False)
+
+# ── 4. GÖRSEL KURULUM (ANİMASYON ARAYÜZÜ) ─────────────────────────────────────
+print("Arayüz Hazırlanıyor...")
 x_res  = 1000
 n_show = 10
 
@@ -154,8 +199,8 @@ txt_area_s = ax_tot_s.text(0.98, 0.85, "", transform=ax_tot_s.transAxes, ha='rig
 txt_area_f = ax_tot_f.text(0.98, 0.85, "", transform=ax_tot_f.transAxes, ha='right', color='#ff7043', fontsize=10, fontweight='bold')
 
 # Periyot göstergeleri (toplam t süresi)
-ax_tot_s.text(0.98, 0.70, rf"$T_{{cycle}} = {t_s[-1]:.2f}$ ", transform=ax_tot_s.transAxes, ha='right', color='#b0bec5', fontsize=10, fontweight='bold')
-ax_tot_f.text(0.98, 0.70, rf"$T_{{cycle}} = {t_f[-1]:.2f}$ ", transform=ax_tot_f.transAxes, ha='right', color='#b0bec5', fontsize=10, fontweight='bold')
+ax_tot_s.text(0.98, 0.70, rf"$T_{{cycle}} = {t_s[-1]:.2f}$ s", transform=ax_tot_s.transAxes, ha='right', color='#b0bec5', fontsize=10, fontweight='bold')
+ax_tot_f.text(0.98, 0.70, rf"$T_{{cycle}} = {t_f[-1]:.2f}$ s", transform=ax_tot_f.transAxes, ha='right', color='#b0bec5', fontsize=10, fontweight='bold')
 
 def setup_pop(ax, title):
     ax.set_facecolor(BG)
