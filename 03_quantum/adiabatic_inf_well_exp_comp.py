@@ -17,7 +17,7 @@ m      = 1.0
 
 v_fast_max = 5.0
 v_slow_max = 0.05
-frames = 1300
+frames = 600
 sub_steps = 10 
 
 # ── 2. ZAMAN EVRİM OPERATÖRÜ ÇÖZÜCÜSÜ ─────────────────────────────────────────
@@ -54,25 +54,26 @@ def solve_time_evolution(v_max, num_frames=600, substeps=10):
 
     print(f"Çözülüyor: v_max = {v_max} | Delta t = {dt:.6f} ...")
     
+    # Hamiltoniyen inşasını hızlandırmak için sabit kısımları önceden hesapla
+    n_q_arr = np.arange(1, N_bas + 1)
+    const_diag = (np.pi**2 * hbar) / (2.0 * m)
+    
+    M0 = np.zeros((N_bas, N_bas))
+    for m_idx in range(N_bas):
+        n_q = m_idx + 1
+        for n_idx in range(N_bas):
+            m_q = n_idx + 1
+            if (n_q + m_q) % 2 != 0:
+                M0[m_idx, n_idx] = -(2.0 * n_q * m_q) / (n_q**2 - m_q**2)
+    
     t_current = 0.0
     for f in range(1, num_frames):
         for _ in range(substeps):
-            # Orta nokta (Midpoint) hassasiyeti ile Hamiltoniyen parametreleri
             L_mid, v_mid = get_Lv(t_current + dt / 2.0)
             
-            # A Matrisi: -i * H_eff / hbar
-            A = np.zeros((N_bas, N_bas), dtype=complex)
-            for m_idx in range(N_bas):
-                n_q = m_idx + 1
-                E_m = (n_q**2 * np.pi**2 * hbar**2) / (2.0 * m * L_mid**2)
-                A[m_idx, m_idx] = -1j * (E_m / hbar)
-                
-                for n_idx in range(N_bas):
-                    if m_idx != n_idx:
-                        m_q = n_idx + 1
-                        if (n_q + m_q) % 2 != 0:
-                            M_val = -(2.0 * n_q * m_q) / (L_mid * (n_q**2 - m_q**2))
-                            A[m_idx, n_idx] = -v_mid * M_val
+            # Vektörel Hamiltoniyen/A matrisi inşası
+            diag_vals = -1j * (n_q_arr**2 * const_diag) / (L_mid**2)
+            A = np.diag(diag_vals) - (v_mid / L_mid) * M0
             
             U = expm(A * dt)
             c = U @ c  
@@ -128,12 +129,56 @@ legend = plt.legend(facecolor='#0d0f1a', edgecolor='#1e2030')
 for text in legend.get_texts(): text.set_color('white')
 
 plt.tight_layout()
-plt.show(block=False)
+# plt.show(block=False)
+
+
+# ── 3.5. ANİMASYON İÇİN ÖN-HESAPLAMA (PRECOMPUTATION) ─────────────────────────
+print("Dalga Fonksiyonu Yoğunlukları ve Seviyeleri Ön-Hesaplanıyor...")
+x_res  = 1000
+n_show = 10
+n_vals = np.arange(1, N_bas + 1)[:, np.newaxis]
+
+# Reversible (Slow) Ön-Hesaplama
+x_s_history = np.zeros((frames, x_res))
+density_s_history = np.zeros((frames, x_res))
+E_s_history = np.zeros((frames, N_bas))
+area_s_history = np.zeros(frames)
+
+for f in range(frames):
+    L = L_s_arr[f]
+    c = c_slow[:, f]
+    x = np.linspace(0, L, x_res)
+    phi = np.sqrt(2.0 / L) * np.sin(n_vals * (np.pi / L) * x)
+    psi = c @ phi
+    density = np.abs(psi)**2
+    
+    x_s_history[f, :] = x
+    density_s_history[f, :] = density
+    area_s_history[f] = np.trapz(density, x)
+    E_s_history[f, :] = (np.arange(1, N_bas + 1)**2 * np.pi**2 * hbar**2) / (2.0 * m * L**2)
+
+# Irreversible (Fast) Ön-Hesaplama
+x_f_history = np.zeros((frames, x_res))
+density_f_history = np.zeros((frames, x_res))
+E_f_history = np.zeros((frames, N_bas))
+area_f_history = np.zeros(frames)
+
+for f in range(frames):
+    L = L_f_arr[f]
+    c = c_fast[:, f]
+    x = np.linspace(0, L, x_res)
+    phi = np.sqrt(2.0 / L) * np.sin(n_vals * (np.pi / L) * x)
+    psi = c @ phi
+    density = np.abs(psi)**2
+    
+    x_f_history[f, :] = x
+    density_f_history[f, :] = density
+    area_f_history[f] = np.trapz(density, x)
+    E_f_history[f, :] = (np.arange(1, N_bas + 1)**2 * np.pi**2 * hbar**2) / (2.0 * m * L**2)
 
 # ── 4. GÖRSEL KURULUM (ANİMASYON ARAYÜZÜ) ─────────────────────────────────────
 print("Arayüz Hazırlanıyor...")
-x_res  = 1000
-n_show = 10
+
 
 fig, axes = plt.subplots(
     3, 2, figsize=(16, 13),
@@ -141,7 +186,7 @@ fig, axes = plt.subplots(
 )
 fig.patch.set_facecolor('#0d0f1a')
 fig.suptitle(
-    "Infinite Square Well — Time Evolution Operator (Flat-Top Velocity)",
+    "Time-Dependent Infinite Square Well",
     color='white', fontsize=14, fontweight='bold', y=0.99
 )
 
@@ -174,8 +219,8 @@ def setup_lev(ax, title):
     ax.grid(True, color=GRID, lw=0.5, alpha=0.6)
     ax.axvline(0, color=WALL, lw=3)
 
-setup_lev(ax_lev_s, "Reversible Cycle — Energy Levels")
-setup_lev(ax_lev_f, "Irreversible Cycle — Energy Levels")
+setup_lev(ax_lev_s, f"Reversible Cycle — Energy Levels (v={v_slow_max})")
+setup_lev(ax_lev_f, f"Irreversible Cycle — Energy Levels (v={v_fast_max})")
 
 txt_v_s = ax_lev_s.text(0.02, 0.96, "", transform=ax_lev_s.transAxes, ha='left', va='top', color='#4fc3f7', fontsize=11, fontweight='bold')
 txt_v_f = ax_lev_f.text(0.02, 0.96, "", transform=ax_lev_f.transAxes, ha='left', va='top', color='#ff7043', fontsize=11, fontweight='bold')
@@ -192,15 +237,15 @@ def setup_tot(ax, title):
     ax.grid(True, color=GRID, lw=0.5, alpha=0.6)
     ax.axvline(0, color=WALL, lw=3)
 
-setup_tot(ax_tot_s, r"Probability Density  $|\psi(x,t)|^2$  —  Reversible")
-setup_tot(ax_tot_f, r"Probability Density  $|\psi(x,t)|^2$  —  Irreversible")
+setup_tot(ax_tot_s, fr"Probability Density  $|\psi(x,t)|^2$  —  Reversible (v={v_slow_max})")
+setup_tot(ax_tot_f, fr"Probability Density  $|\psi(x,t)|^2$  —  Irreversible (v={v_fast_max})")
 
 txt_area_s = ax_tot_s.text(0.98, 0.85, "", transform=ax_tot_s.transAxes, ha='right', color='#4fc3f7', fontsize=10, fontweight='bold')
 txt_area_f = ax_tot_f.text(0.98, 0.85, "", transform=ax_tot_f.transAxes, ha='right', color='#ff7043', fontsize=10, fontweight='bold')
 
 # Periyot göstergeleri (toplam t süresi)
-ax_tot_s.text(0.98, 0.70, rf"$T_{{cycle}} = {t_s[-1]:.2f}$ s", transform=ax_tot_s.transAxes, ha='right', color='#b0bec5', fontsize=10, fontweight='bold')
-ax_tot_f.text(0.98, 0.70, rf"$T_{{cycle}} = {t_f[-1]:.2f}$ s", transform=ax_tot_f.transAxes, ha='right', color='#b0bec5', fontsize=10, fontweight='bold')
+ax_tot_s.text(0.98, 0.70, rf"$T_{{cycle}} = {t_s[-1]:.2f}$ ", transform=ax_tot_s.transAxes, ha='right', color='#b0bec5', fontsize=10, fontweight='bold')
+ax_tot_f.text(0.98, 0.70, rf"$T_{{cycle}} = {t_f[-1]:.2f}$ ", transform=ax_tot_f.transAxes, ha='right', color='#b0bec5', fontsize=10, fontweight='bold')
 
 def setup_pop(ax, title):
     ax.set_facecolor(BG)
@@ -214,8 +259,8 @@ def setup_pop(ax, title):
     ax.set_ylabel("$|c_n|^2$",       color='#90a4ae', fontsize=9)
     ax.set_title(title, color='white', fontsize=11, pad=5)
 
-setup_pop(ax_pop_s, "Occupation Probabilities  —  Reversible")
-setup_pop(ax_pop_f, "Occupation Probabilities  —  Irreversible")
+setup_pop(ax_pop_s, f"Occupation Probabilities  —  Reversible (v={v_slow_max})")
+setup_pop(ax_pop_f, f"Occupation Probabilities  —  Irreversible (v={v_fast_max})")
 
 wall_lev_s = ax_lev_s.axvline(L0, color=WALL,  lw=3)
 wall_lev_f = ax_lev_f.axvline(L0, color=WALL,  lw=3)
@@ -223,8 +268,10 @@ E_lines_s = [ax_lev_s.plot([], [], '--', color=LC[k], lw=1.2, alpha=1.0)[0] for 
 E_lines_f = [ax_lev_f.plot([], [], '--', color=LC[k], lw=1.2, alpha=1.0)[0] for k in range(n_show)]
 wall_tot_s = ax_tot_s.axvline(L0, color=WALL,  lw=3)
 wall_tot_f = ax_tot_f.axvline(L0, color=WALL,  lw=3)
-fill_tot_s = None
-fill_tot_f = None
+x_init = np.linspace(0, L0, x_res)
+y_init = np.zeros(x_res)
+fill_tot_s = ax_tot_s.fill_between(x_init, 0, y_init, color='#4fc3f7', alpha=0.65, linewidth=0)
+fill_tot_f = ax_tot_f.fill_between(x_init, 0, y_init, color='#ff7043', alpha=0.65, linewidth=0)
 bar_s = ax_pop_s.bar(range(1, n_show+1), np.zeros(n_show), color=LC, alpha=0.85, width=0.5)
 bar_f = ax_pop_f.bar(range(1, n_show+1), np.zeros(n_show), color=LC, alpha=0.85, width=0.5)
 txt_s = [ax_pop_s.text(i+1, 0, "", ha='center', va='bottom', color='white', fontsize=8) for i in range(n_show)]
@@ -235,36 +282,24 @@ is_playing  = [False]
 
 # ── 5. ANİMASYON MOTORU ───────────────────────────────────────────────────────
 def animate(frame):
-    global fill_tot_s, fill_tot_f
-
     if frame == 1 and not is_playing[0]:
         ani.pause()
         frame = 0
 
-    # Önceden Zaman Evrim Operatörü ile çözülmüş dizilerden veriyi çek
+    # Önceden hesaplanmış verileri çek
     L_s = L_s_arr[frame]
     v_s = v_s_arr[frame]
-    c_s = c_slow[:, frame]
-    
-    x_s = np.linspace(0, L_s, x_res)
-    phi_s = np.array([np.sqrt(2/L_s) * np.sin((n+1)*np.pi*x_s/L_s) for n in range(N_bas)])
-    E_s = np.array([(n+1)**2 * np.pi**2 / (2*L_s**2) for n in range(N_bas)])
-    
-    psi_s = np.einsum('n,nx->x', c_s, phi_s)
-    density_s = np.abs(psi_s)**2 
-    area_s = np.trapz(density_s, x_s)
+    E_s = E_s_history[frame]
+    x_s = x_s_history[frame]
+    density_s = density_s_history[frame]
+    area_s = area_s_history[frame]
 
     L_f = L_f_arr[frame]
     v_f = v_f_arr[frame]
-    c_f = c_fast[:, frame]
-    
-    x_f = np.linspace(0, L_f, x_res)
-    phi_f = np.array([np.sqrt(2/L_f) * np.sin((n+1)*np.pi*x_f/L_f) for n in range(N_bas)])
-    E_f = np.array([(n+1)**2 * np.pi**2 / (2*L_f**2) for n in range(N_bas)])
-    
-    psi_f = np.einsum('n,nx->x', c_f, phi_f)
-    density_f = np.abs(psi_f)**2 
-    area_f = np.trapz(density_f, x_f)
+    E_f = E_f_history[frame]
+    x_f = x_f_history[frame]
+    density_f = density_f_history[frame]
+    area_f = area_f_history[frame]
 
     # Arayüz güncellemeleri
     wall_lev_s.set_xdata([L_s, L_s])
@@ -276,20 +311,26 @@ def animate(frame):
     wall_tot_s.set_xdata([L_s, L_s])
     wall_tot_f.set_xdata([L_f, L_f])
 
-    if fill_tot_s is not None: fill_tot_s.remove(); fill_tot_s = None
-    if fill_tot_f is not None: fill_tot_f.remove(); fill_tot_f = None
+    # Dalga fonksiyonu alanlarını set_verts kullanarak güncelle (Çok daha hızlı ve akıcı)
+    verts_s = np.zeros((x_res + 2, 2))
+    verts_s[0] = (x_s[0], 0)
+    verts_s[1:-1, 0] = x_s
+    verts_s[1:-1, 1] = density_s
+    verts_s[-1] = (x_s[-1], 0)
+    fill_tot_s.set_verts([verts_s])
 
-    fill_tot_s = ax_tot_s.fill_between(x_s, 0, density_s, color='#4fc3f7', alpha=0.65, linewidth=0)
-    fill_tot_f = ax_tot_f.fill_between(x_f, 0, density_f, color='#ff7043', alpha=0.65, linewidth=0)
+    verts_f = np.zeros((x_res + 2, 2))
+    verts_f[0] = (x_f[0], 0)
+    verts_f[1:-1, 0] = x_f
+    verts_f[1:-1, 1] = density_f
+    verts_f[-1] = (x_f[-1], 0)
+    fill_tot_f.set_verts([verts_f])
     
     txt_area_s.set_text(rf"$\int |\psi|^2 dx = {area_s:.3f}$")
     txt_area_f.set_text(rf"$\int |\psi|^2 dx = {area_f:.3f}$")
     
-    txt_v_s.set_text(rf"$v(t) = {v_s:+.3f}$")
-    txt_v_f.set_text(rf"$v(t) = {v_f:+.3f}$")
-
-    pop_s = np.abs(c_s)**2
-    pop_f = np.abs(c_f)**2
+    pop_s = np.abs(c_slow[:, frame])**2
+    pop_f = np.abs(c_fast[:, frame])**2
     for i in range(n_show):
         p_s = pop_s[i]
         bar_s[i].set_height(p_s)
@@ -307,11 +348,11 @@ def animate(frame):
     return (wall_lev_s, wall_lev_f, wall_tot_s, wall_tot_f,
             *E_lines_s, *E_lines_f, txt_norm, txt_area_s, txt_area_f,
             txt_v_s, txt_v_f,
-            *bar_s, *bar_f, *txt_s, *txt_f)
+            *bar_s, *bar_f, *txt_s, *txt_f, fill_tot_s, fill_tot_f)
 
 plt.tight_layout(rect=[0, 0.06, 1, 0.99])
 
-ani = animation.FuncAnimation(fig, animate, frames=frames, interval=15, blit=False)
+ani = animation.FuncAnimation(fig, animate, frames=frames, interval=45, blit=True)
 
 ax_play   = plt.axes([0.42, 0.01, 0.07, 0.03])
 ax_replay = plt.axes([0.51, 0.01, 0.07, 0.03])
